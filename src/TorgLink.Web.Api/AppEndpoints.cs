@@ -72,6 +72,7 @@ internal static class AppEndpoints
         api.MapGet("/settings", GetSettings);
         api.MapPost("/settings", SaveSettings);
         api.MapGet("/lora", GetLoRaSettings);
+        api.MapGet("/lora/ports", ListLoRaPorts);
         api.MapPost("/lora", SaveLoRaSettings);
         api.MapGet("/lora/peers", ListLoRaPeers);
         api.MapGet("/lora/jurisdictions", ListLoRaJurisdictions);
@@ -174,26 +175,31 @@ internal static class AppEndpoints
     private static async Task<IResult> Logout(AuthService auth, UserP2pRuntime p2p, MeshtasticTransportHost lora,
         HttpContext http)
     {
-        try
-        {
-            await p2p.StopAsync().ConfigureAwait(false);
-        }
-        catch
-        {
-            // ignore
-        }
-
-        try
-        {
-            await lora.StopAsync().ConfigureAwait(false);
-        }
-        catch
-        {
-            // ignore
-        }
-
         await auth.LogoutAsync().ConfigureAwait(false);
         await http.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme).ConfigureAwait(false);
+
+        // Do not hold the HTTP call on transport teardown. Long-poll can take the full
+        // server timeout, and the settings button then never leaves the page.
+        ChatSessionHelper.TrackShutdown(Task.Run(async () =>
+        {
+            try
+            {
+                await p2p.StopAsync().ConfigureAwait(false);
+            }
+            catch
+            {
+                // ignore
+            }
+
+            try
+            {
+                await lora.StopAsync().ConfigureAwait(false);
+            }
+            catch
+            {
+                // ignore
+            }
+        }));
         return Results.Ok();
     }
 
@@ -256,7 +262,7 @@ internal static class AppEndpoints
                 avatar = ChatSessionHelper.AvatarColor(c.PeerNetworkIdShort),
                 preview = ChatSessionHelper.Preview(last),
                 time = last == null ? "" : ChatSessionHelper.TimeLabel(last.SentUtcTicks),
-                online = p2p.LocalScan.IsPeerSeenRecentlyOnLan(c.PeerNetworkIdShort),
+                online = p2p.LocalScan.IsPeerSeenRecentlyOnLan(c.PeerNetworkIdShort) || lora.HasRecentPeer(c.PeerNetworkIdShort),
                 delivery = ds,
                 isBot = c.IsBot
             });
@@ -685,7 +691,7 @@ internal static class AppEndpoints
     }
 
     private static async Task<IResult> OpenDiscoveredPeer(OpenPeerBody body, AuthService auth, ChatRepository chats,
-        UserP2pRuntime p2p, PeerBlacklist blacklist)
+        UserP2pRuntime p2p, PeerBlacklist blacklist, MeshtasticTransportHost lora)
     {
         if (NeedUser(auth) is { } deny)
             return deny;
@@ -695,7 +701,17 @@ internal static class AppEndpoints
         var peer = p2p.LocalScan.Clients.FirstOrDefault(c =>
             ChatRepository.PeerNetworkIdsEqual(c.NetworkId.ToShortString(), body.NetworkId ?? ""));
         if (peer == null)
-            return Results.NotFound();
+        {
+            var mesh = lora.ListDiscoveredPeers().FirstOrDefault(p =>
+                ChatRepository.PeerNetworkIdsEqual(p.NetworkIdShort, body.NetworkId ?? ""));
+            if (mesh == null)
+                return Results.NotFound();
+            var existing = await chats.FindChatByPeerNetworkIdAsync(auth.CurrentUser!.Id, mesh.NetworkIdShort)
+                .ConfigureAwait(false);
+            if (existing != null)
+                return Results.Json(new { id = existing.Id, kind = "AlreadyExists" });
+            return Results.BadRequest(new { error = "Узел в сети TorgLink по Meshtastic. Чат ещё не создан." });
+        }
         var result = await LanChatStartFromDiscovery
             .TryStartAsync(peer, auth, chats, p2p.CreateLanChatStartContext()).ConfigureAwait(false);
         return result.Kind switch
@@ -754,7 +770,7 @@ internal static class AppEndpoints
                 networkId = c.PeerNetworkIdShort,
                 initials = ChatSessionHelper.Initials(c.PeerNickname),
                 avatar = ChatSessionHelper.AvatarColor(c.PeerNetworkIdShort),
-                online = p2p.LocalScan.IsPeerSeenRecentlyOnLan(c.PeerNetworkIdShort),
+                online = p2p.LocalScan.IsPeerSeenRecentlyOnLan(c.PeerNetworkIdShort) || lora.HasRecentPeer(c.PeerNetworkIdShort),
                 isBot
             });
         }
@@ -782,7 +798,30 @@ internal static class AppEndpoints
             });
         }
 
+        AppendMeshContacts(rows, seen, lora);
         return Results.Json(rows);
+    }
+
+    private static void AppendMeshContacts(List<object> rows, HashSet<string> seen, MeshtasticTransportHost lora)
+    {
+        foreach (var p in lora.ListDiscoveredPeers())
+        {
+            var id = ChatRepository.CanonicalPeerNetworkId(p.NetworkIdShort);
+            if (id.Length == 0 || !seen.Add(id))
+                continue;
+            var nick = string.IsNullOrWhiteSpace(p.Nickname) ? id : p.Nickname;
+            rows.Add(new
+            {
+                chatId = (int?)null,
+                name = nick,
+                detail = $"{id} · Meshtastic",
+                networkId = id,
+                initials = ChatSessionHelper.Initials(nick),
+                avatar = ChatSessionHelper.AvatarColor(id),
+                online = lora.HasRecentPeer(id),
+                isBot = false
+            });
+        }
     }
 
     private static string TransportLabel(DiscoveredLocalPeer p) =>
@@ -791,38 +830,50 @@ internal static class AppEndpoints
             TransportKind.Udp => "LAN",
             TransportKind.Bluetooth => "Bluetooth",
             TransportKind.MessengerServer => "servers",
+            ShortP2P.LoRa.TransportKind.Meshtastic => "Meshtastic",
             _ => p.TransportKind.ToString()
         };
 
-    private static async Task<IResult> Scan(AuthService auth, UserP2pRuntime p2p)
+    private static async Task<IResult> Scan(AuthService auth, UserP2pRuntime p2p, MeshtasticTransportHost lora)
     {
         if (NeedUser(auth) is { } deny)
             return deny;
-        await p2p.LocalScan.ScanAsync(LocalNetworkScanner.DefaultScanListenDuration).ConfigureAwait(false);
+        await Task.WhenAll(
+            p2p.LocalScan.ScanAsync(LocalNetworkScanner.DefaultScanListenDuration),
+            lora.ScanAsync()).ConfigureAwait(false);
         return Results.Ok();
     }
 
-    private static IResult Network(AuthService auth, UserP2pRuntime p2p)
+    private static IResult Network(AuthService auth, UserP2pRuntime p2p, MeshtasticTransportHost lora)
     {
         if (NeedUser(auth) is { } deny)
             return deny;
-        var nodes = p2p.LocalScan.Clients.Select(p =>
+        var nodes = new List<NetworkRow>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var p in p2p.LocalScan.Clients)
         {
             var id = p.NetworkId.ToShortString();
+            seen.Add(ChatRepository.CanonicalPeerNetworkId(id));
             var nick = string.IsNullOrWhiteSpace(p.Nickname) ? id : p.Nickname;
             var online = p.TransportKind == TransportKind.MessengerServer
                 ? p.MessengerServerOnline
                 : p2p.LocalScan.IsPeerSeenRecentlyOnLan(id) || p.MessengerServerOnline;
-            return new
-            {
-                name = nick,
-                networkId = id,
-                initials = ChatSessionHelper.Initials(nick),
-                avatar = ChatSessionHelper.AvatarColor(id),
-                online,
-                hops = TransportLabel(p)
-            };
-        }).ToList();
+            nodes.Add(new NetworkRow(
+                nick, id, ChatSessionHelper.Initials(nick), ChatSessionHelper.AvatarColor(id),
+                online, TransportLabel(p)));
+        }
+
+        foreach (var p in lora.ListDiscoveredPeers())
+        {
+            var id = ChatRepository.CanonicalPeerNetworkId(p.NetworkIdShort);
+            if (id.Length == 0 || !seen.Add(id))
+                continue;
+            var nick = string.IsNullOrWhiteSpace(p.Nickname) ? id : p.Nickname;
+            nodes.Add(new NetworkRow(
+                nick, id, ChatSessionHelper.Initials(nick), ChatSessionHelper.AvatarColor(id),
+                lora.HasRecentPeer(id), "Meshtastic"));
+        }
+
         return Results.Json(nodes);
     }
 
@@ -1018,6 +1069,14 @@ internal static class AppEndpoints
         return Results.Ok();
     }
 
+    private static async Task<IResult> ListLoRaPorts(AuthService auth, MeshtasticTransportHost lora)
+    {
+        if (NeedUser(auth) is { } deny)
+            return deny;
+        var selected = (await lora.LoadSettingsAsync().ConfigureAwait(false)).ComPort;
+        return Results.Json(SerialComPorts.List(selected));
+    }
+
     private static async Task<IResult> GetLoRaSettings(AuthService auth, MeshtasticTransportHost lora)
     {
         if (NeedUser(auth) is { } deny)
@@ -1075,15 +1134,39 @@ internal static class AppEndpoints
     {
         if (NeedUser(auth) is { } deny)
             return deny;
-        var rows = lora.ListPeers().Select(p => new
+        var rows = new List<object>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var p in lora.ListDiscoveredPeers())
         {
-            p.NetworkIdShort,
-            p.MeshIdHex,
-            p.Subject,
-            p.IsActive,
-            p.Confirmed,
-            lastSeenUtc = p.LastSeenUtc
-        });
+            var id = ChatRepository.CanonicalPeerNetworkId(p.NetworkIdShort);
+            if (id.Length == 0 || !seen.Add(id))
+                continue;
+            rows.Add(new
+            {
+                NetworkIdShort = p.NetworkIdShort,
+                p.MeshIdHex,
+                Subject = p.Nickname,
+                IsActive = lora.HasRecentPeer(id),
+                Confirmed = true,
+                lastSeenUtc = p.LastSeenUtc
+            });
+        }
+
+        foreach (var p in lora.ListPeers())
+        {
+            if (!seen.Add(ChatRepository.CanonicalPeerNetworkId(p.NetworkIdShort)))
+                continue;
+            rows.Add(new
+            {
+                p.NetworkIdShort,
+                p.MeshIdHex,
+                p.Subject,
+                p.IsActive,
+                p.Confirmed,
+                lastSeenUtc = p.LastSeenUtc
+            });
+        }
+
         return Results.Json(rows);
     }
 
@@ -1193,33 +1276,47 @@ internal static class AppEndpoints
         return Results.Json(new { path, text });
     }
 
-    private static IResult Lan(AuthService auth, UserP2pRuntime p2p)
+    private static IResult Lan(AuthService auth, UserP2pRuntime p2p, MeshtasticTransportHost lora)
     {
         if (NeedUser(auth) is { } deny)
             return deny;
-        var rows = p2p.LocalScan.Clients.Select(p =>
+        var rows = new List<LanRow>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var p in p2p.LocalScan.Clients)
         {
             var id = p.NetworkId.ToShortString();
+            seen.Add(ChatRepository.CanonicalPeerNetworkId(id));
             var online = p.TransportKind == TransportKind.MessengerServer
                 ? p.MessengerServerOnline
                 : p2p.LocalScan.IsPeerSeenRecentlyOnLan(id) || p.MessengerServerOnline;
-            return new
-            {
-                nickname = string.IsNullOrEmpty(p.Nickname) ? "—" : p.Nickname,
-                networkId = id,
+            rows.Add(new LanRow(
+                string.IsNullOrEmpty(p.Nickname) ? "—" : p.Nickname,
+                id,
                 online,
-                transport = TransportLabel(p),
-                lastSeen = p.LastSeenUtc.ToLocalTime().ToString("g")
-            };
-        });
+                TransportLabel(p),
+                p.LastSeenUtc.ToLocalTime().ToString("g")));
+        }
+
+        foreach (var p in lora.ListDiscoveredPeers())
+        {
+            var id = ChatRepository.CanonicalPeerNetworkId(p.NetworkIdShort);
+            if (id.Length == 0 || !seen.Add(id))
+                continue;
+            var nick = string.IsNullOrWhiteSpace(p.Nickname) ? id : p.Nickname;
+            rows.Add(new LanRow(nick, id, lora.HasRecentPeer(id), "Meshtastic",
+                p.LastSeenUtc.ToLocalTime().ToString("g")));
+        }
+
         return Results.Json(rows);
     }
 
-    private static async Task<IResult> LanScan(AuthService auth, UserP2pRuntime p2p)
+    private static async Task<IResult> LanScan(AuthService auth, UserP2pRuntime p2p, MeshtasticTransportHost lora)
     {
         if (NeedUser(auth) is { } deny)
             return deny;
-        await p2p.LocalScan.ScanAsync(LocalNetworkScanner.DefaultScanListenDuration).ConfigureAwait(false);
+        await Task.WhenAll(
+            p2p.LocalScan.ScanAsync(LocalNetworkScanner.DefaultScanListenDuration),
+            lora.ScanAsync()).ConfigureAwait(false);
         return Results.Ok();
     }
 
@@ -1229,6 +1326,11 @@ internal static class AppEndpoints
             return $"{bytes / (1024 * 1024)} MB";
         return $"{(bytes + 1023) / 1024} KB";
     }
+
+    private sealed record NetworkRow(
+        string name, string networkId, string initials, string avatar, bool online, string hops, bool meshOnly = false);
+
+    private sealed record LanRow(string nickname, string networkId, bool online, string transport, string lastSeen);
 
     private sealed record LoginBody(string? Nickname, string? Password);
     private sealed record LanguageBody(string? Language);

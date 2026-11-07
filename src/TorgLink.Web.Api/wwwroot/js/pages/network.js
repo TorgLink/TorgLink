@@ -19,6 +19,10 @@ export function NetworkPage() {
           {
             class: "item",
             onclick: async () => {
+              if (n.meshOnly || !n.networkId) {
+                window.alert(`${n.name} · ${n.hops}`);
+                return;
+              }
               try {
                 const r = await post("/api/chats/open-peer", { networkId: n.networkId });
                 nav(`/app/chats/${r.id}`);

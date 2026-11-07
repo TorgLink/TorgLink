@@ -73,7 +73,9 @@
                     <Switch x:Name="LoRaSwitch" Grid.Column="1" OnColor="{DynamicResource Accent}"
                             Toggled="OnLoRaToggled" />
                 </Grid>
-                <Entry x:Name="LoRaComPortEntry" Placeholder="COM3" FontSize="14" />
+                <Picker x:Name="LoRaComPortPicker" Title="COM port"
+                        BackgroundColor="{DynamicResource PageBackground}"
+                        TextColor="{DynamicResource MidnightBlue}" />
                 <Picker x:Name="LoRaJurisdictionPicker" Title="Jurisdiction"
                         BackgroundColor="{DynamicResource PageBackground}"
                         TextColor="{DynamicResource MidnightBlue}" />

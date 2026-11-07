@@ -19,6 +19,10 @@ export function LanScanPage() {
           {
             class: "item",
             ondblclick: async () => {
+              if (!r.networkId) {
+                window.alert(`${r.nickname} · ${r.transport}`);
+                return;
+              }
               try {
                 const chat = await post("/api/chats/open-peer", { networkId: r.networkId });
                 nav(`/app/chats/${chat.id}`);

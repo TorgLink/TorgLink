@@ -14,7 +14,7 @@
                    TextColor="{DynamicResource MidnightBlue}" Margin="16,0" />
             <Label x:Name="LoRaPeersTitle" Text="LoRa / Meshtastic peers" FontAttributes="Bold" FontSize="16"
                    TextColor="{DynamicResource MidnightBlue}" Margin="16,8,16,0" />
-            <CollectionView x:Name="LoRaPeersCollection" HeightRequest="120" Margin="0,0,0,8">
+            <CollectionView x:Name="LoRaPeersCollection" HeightRequest="220" Margin="0,0,0,8">
                 <CollectionView.ItemTemplate>
                     <DataTemplate>
                         <Grid Padding="16,6" ColumnDefinitions="*,Auto" ColumnSpacing="10">

@@ -127,12 +127,23 @@ export function SettingsPage() {
 
     // LoRa / Meshtastic
     try {
-      const [lora, jurisdictions, peers] = await Promise.all([
+      const [lora, jurisdictions, peers, portNames] = await Promise.all([
         get("/api/lora"),
         get("/api/lora/jurisdictions"),
-        get("/api/lora/peers")
+        get("/api/lora/peers"),
+        get("/api/lora/ports")
       ]);
-      const com = el("input", { type: "text", value: lora.comPort || "", placeholder: "COM3", style: { marginTop: "8px", width: "100%" } });
+      const ports = portNames?.length ? portNames : ["COM1", "COM2", "COM3", "COM4"];
+      const com = el(
+        "select",
+        { style: { marginTop: "8px", width: "100%" } },
+        ports.map((name) => {
+          const o = el("option", { value: name }, name);
+          if (String(name).toLowerCase() === String(lora.comPort || "").toLowerCase()) o.selected = true;
+          return o;
+        })
+      );
+      if (!lora.comPort) com.selectedIndex = 0;
       const jur = el(
         "select",
         { style: { marginTop: "8px", width: "100%" } },
@@ -212,8 +223,11 @@ export function SettingsPage() {
         {
           class: "btn danger",
           onclick: async () => {
-            await logout();
-            nav("/login");
+            try {
+              await logout();
+            } finally {
+              nav("/login");
+            }
           }
         },
         t("settings.logout")

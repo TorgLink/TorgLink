@@ -108,7 +108,10 @@ public partial class SettingsPage : ContentPage
         var s = await _lora.LoadSettingsAsync().ConfigureAwait(true);
         _suppressToggle = true;
         LoRaSwitch.IsToggled = s.Enabled;
-        LoRaComPortEntry.Text = s.ComPort;
+        var ports = SerialComPorts.List(s.ComPort).ToList();
+        LoRaComPortPicker.ItemsSource = ports;
+        var portIndex = ports.FindIndex(p => string.Equals(p, s.ComPort, StringComparison.OrdinalIgnoreCase));
+        LoRaComPortPicker.SelectedIndex = portIndex >= 0 ? portIndex : 0;
         var codes = JurisdictionCatalog.Regions.Select(r => r.Code).ToList();
         LoRaJurisdictionPicker.ItemsSource = codes;
         var idx = codes.FindIndex(c => string.Equals(c, s.JurisdictionCode, StringComparison.OrdinalIgnoreCase));
@@ -132,7 +135,7 @@ public partial class SettingsPage : ContentPage
         var settings = new LoRaTransportSettings
         {
             Enabled = LoRaSwitch.IsToggled,
-            ComPort = LoRaComPortEntry.Text?.Trim() ?? "",
+            ComPort = LoRaComPortPicker.SelectedItem as string ?? "COM1",
             BaudRate = 115200,
             JurisdictionCode = code
         };
@@ -492,29 +495,59 @@ public partial class SettingsPage : ContentPage
 
     private async void OnLogoutClicked(object? sender, EventArgs e)
     {
-        try
-        {
-            await _p2p.StopAsync().ConfigureAwait(true);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Stop P2P on logout");
-        }
+        if (!LogoutButton.IsEnabled)
+            return;
+        LogoutButton.IsEnabled = false;
 
         try
         {
-            var lora = MauiProgram.Services.GetService<TorgLink.LoRa.MeshtasticTransportHost>();
-            if (lora != null)
-                await lora.StopAsync().ConfigureAwait(true);
+            await _auth.LogoutAsync().ConfigureAwait(true);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Stop LoRa on logout");
+            _logger.LogWarning(ex, "Logout failed");
         }
 
         AppLog.Ui.LogInformation("Logout");
-        await _auth.LogoutAsync().ConfigureAwait(true);
-        Application.Current!.MainPage = new NavigationPage(MauiProgram.Services.GetRequiredService<LoginPage>());
+        ShowLogin();
+
+        var p2p = _p2p;
+        var lora = _lora;
+        var logger = _logger;
+        // Stop after the login page is up. Awaiting this on the click freezes the UI
+        // for the messenger long-poll (and can deadlock WinRT stops on the UI thread).
+        P2pBootstrap.TrackShutdown(Task.Run(async () =>
+        {
+            try
+            {
+                await p2p.StopAsync().ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Stop P2P on logout");
+            }
+
+            try
+            {
+                await lora.StopAsync().ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Stop LoRa on logout");
+            }
+        }));
+    }
+
+    private static void ShowLogin()
+    {
+        var login = new NavigationPage(MauiProgram.Services.GetRequiredService<LoginPage>());
+        var app = Application.Current;
+        if (app == null)
+            return;
+        // MainPage alone does not replace a Shell window that is already open.
+        if (app.Windows.Count > 0)
+            app.Windows[0].Page = login;
+        app.MainPage = login;
     }
 }
 

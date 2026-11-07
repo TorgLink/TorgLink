@@ -21,6 +21,7 @@
     <Compile Include="..\Shared\LoRa\LoRaMeshPeerInfo.cs" Link="LoRa\LoRaMeshPeerInfo.cs" />
     <Compile Include="..\Shared\LoRa\MeshtasticTransportHost.cs" Link="LoRa\MeshtasticTransportHost.cs" />
     <Compile Include="..\Shared\LoRa\LoRaBootstrap.cs" Link="LoRa\LoRaBootstrap.cs" />
+    <Compile Include="..\Shared\LoRa\SerialComPorts.cs" Link="LoRa\SerialComPorts.cs" />
     <ProjectReference Include="..\..\ShortP2P\src\ShortP2P.Auth\ShortP2P.Auth.csproj" />
     <ProjectReference Include="..\..\ShortP2P\src\ShortP2P.Client\ShortP2P.Client.csproj" />
     <ProjectReference Include="..\..\ShortP2P\src\ShortP2P.Discovery\ShortP2P.Discovery.csproj" />

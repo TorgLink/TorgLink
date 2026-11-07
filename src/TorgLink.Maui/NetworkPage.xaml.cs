@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using Microsoft.Extensions.Logging;
 using ShortP2P.Auth;
 using ShortP2P.Auth.Data;
+using ShortP2P.Client.Data;
 using ShortP2P.Client.Qr;
 using ShortP2P.Client.Services;
 using ShortP2P.Crypto;
@@ -129,8 +130,24 @@ public partial class NetworkPage : ContentPage
     private void RefreshLoRaPeers()
     {
         _loraPeers.Clear();
+        foreach (var found in _lora.ListDiscoveredPeers())
+        {
+            _loraPeers.Add(new LoRaPeerRow
+            {
+                NetworkIdShort = found.Nickname,
+                Detail = $"{found.NetworkIdShort} · Meshtastic",
+                Status = _lora.HasRecentPeer(found.NetworkIdShort) ? "online" : "seen"
+            });
+        }
+
+        var shown = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var found in _lora.ListDiscoveredPeers())
+            shown.Add(ChatRepository.CanonicalPeerNetworkId(found.NetworkIdShort));
+
         foreach (var peer in _lora.ListPeers().OrderByDescending(p => p.LastSeenUtc))
         {
+            if (shown.Contains(ChatRepository.CanonicalPeerNetworkId(peer.NetworkIdShort)))
+                continue;
             _loraPeers.Add(new LoRaPeerRow
             {
                 NetworkIdShort = peer.NetworkIdShort,

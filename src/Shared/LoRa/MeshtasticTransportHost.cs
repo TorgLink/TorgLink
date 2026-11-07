@@ -1,13 +1,16 @@
+using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using ShortP2P.Auth;
 using ShortP2P.Auth.Data;
 using ShortP2P.Client;
+using ShortP2P.Discovery;
 using ShortP2P.Client.Services;
 using ShortP2P.Client.Transport;
 using ShortP2P.LoRa;
 using ShortP2P.LoRa.Directory;
 using ShortP2P.LoRa.Jurisdiction;
+using ShortP2P.LoRa.Link;
 using ShortP2P.Transport.Abstractions;
 using LoRaTransportKind = ShortP2P.LoRa.TransportKind;
 
@@ -31,8 +34,13 @@ public sealed class MeshtasticTransportHost : IAdditionalTransportProvider, IAsy
 
     private MeshatasticTransport? _transport;
     private LoRaTransportSettings _settings = new();
+    private readonly ConcurrentDictionary<string, LoRaDiscoveredPeerInfo> _discovered = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<uint, long> _lastPresenceReplyTicks = new();
     private Func<byte[], bool>? _isServerNetworkId;
     private int _directorySyncRunning;
+
+    private static readonly TimeSpan PresenceFreshness = TimeSpan.FromMinutes(2);
+    private const long PresenceReplyIntervalMs = 20_000;
 
     public MeshtasticTransportHost(
         AuthService auth,
@@ -119,12 +127,14 @@ public sealed class MeshtasticTransportHost : IAdditionalTransportProvider, IAsy
 
             var transport = new MeshatasticTransport(options, _logger);
             transport.Directory.Changed += OnDirectoryChanged;
+            transport.PresenceReceived += OnPresenceReceived;
             try
             {
                 await transport.StartAsync(cancellationToken).ConfigureAwait(false);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
+                transport.PresenceReceived -= OnPresenceReceived;
                 transport.Directory.Changed -= OnDirectoryChanged;
                 await transport.DisposeAsync().ConfigureAwait(false);
                 _logger.LogWarning(ex, "Failed to start Meshatastic transport on {ComPort}", options.ComPort);
@@ -169,6 +179,7 @@ public sealed class MeshtasticTransportHost : IAdditionalTransportProvider, IAsy
         if (transport == null)
             return;
 
+        transport.PresenceReceived -= OnPresenceReceived;
         transport.Directory.Changed -= OnDirectoryChanged;
         try
         {
@@ -252,6 +263,174 @@ public sealed class MeshtasticTransportHost : IAdditionalTransportProvider, IAsy
         }
 
         return list;
+    }
+
+    /// <summary>Peers that answered with a presence ping (nickname + network id).</summary>
+    public IReadOnlyList<LoRaDiscoveredPeerInfo> ListDiscoveredPeers()
+    {
+        return _discovered.Values
+            .OrderBy(p => p.Nickname, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    public bool HasRecentPeer(string? networkIdShort)
+    {
+        var id = ChatRepository.CanonicalPeerNetworkId(networkIdShort ?? "");
+        return id.Length > 0
+               && _discovered.TryGetValue(id, out var peer)
+               && DateTime.UtcNow - peer.LastSeenUtc <= PresenceFreshness;
+    }
+
+    /// <summary>Meshtastic nodes the radio has heard, excluding this board.</summary>
+    public IReadOnlyList<LoRaRadioNodeInfo> ListRadioNodes()
+    {
+        MeshatasticTransport? transport;
+        lock (_transportSync)
+            transport = _transport;
+        if (transport == null)
+            return [];
+
+        uint? self = null;
+        if (transport.LocalMeshId != null && transport.LocalMeshId.TryToNodeNumber(out var selfNode))
+            self = selfNode;
+
+        var list = new List<LoRaRadioNodeInfo>();
+        foreach (var node in transport.RadioNodes)
+        {
+            if (self != null && node.NodeNumber == self.Value)
+                continue;
+            list.Add(new LoRaRadioNodeInfo(
+                node.NodeNumber, node.NodeId, node.LongName, node.ShortName, node.DisplayName));
+        }
+
+        return list;
+    }
+
+    /// <summary>
+    ///     Open the radio if needed, re-read its node database, and broadcast our directory
+    ///     so other TorgLink nodes on the mesh can answer.
+    /// </summary>
+    public async Task ScanAsync(CancellationToken cancellationToken = default)
+    {
+        if (!IsRunning)
+        {
+            try
+            {
+                await EnsureStartedAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger.LogWarning(ex, "Meshtastic scan could not open the radio");
+                return;
+            }
+        }
+
+        MeshatasticTransport? transport;
+        lock (_transportSync)
+            transport = _transport;
+        if (transport == null)
+            return;
+
+        // Same card as the contacts scan (presence 0x31): our network id and nickname.
+        // A TorgLink node that hears the broadcast answers with its own card.
+        try
+        {
+            await SendOwnPresenceAsync(transport, MeshatasticTransport.BroadcastNode, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("UNSET", StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                "Регион LoRa не выбран: опрос в эфир не уходит. Выберите jurisdiction в настройках LoRa.", ex);
+        }
+
+        var listen = Task.Delay(TimeSpan.FromSeconds(8), cancellationToken);
+        var nodes = transport.RefreshRadioNodesAsync(cancellationToken).AsTask();
+        try
+        {
+            await Task.WhenAll(listen, nodes).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Meshtastic node database refresh failed");
+            if (!listen.IsCompleted)
+                await listen.ConfigureAwait(false);
+        }
+
+        DirectoryChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void OnPresenceReceived(uint fromNode, uint toNode, byte[] payload)
+    {
+        if (!PresencePingCodec.TryParse(payload, out var networkId, out var nickname, out _, out _, out _))
+            return;
+
+        var user = _auth.CurrentUser;
+        var idShort = networkId.ToShortString();
+        if (user != null && ChatRepository.PeerNetworkIdsEqual(idShort, user.NetworkIdShort))
+            return;
+
+        var id = ChatRepository.CanonicalPeerNetworkId(idShort);
+        if (id.Length == 0)
+            return;
+
+        var nick = string.IsNullOrWhiteSpace(nickname) ? idShort : nickname.Trim();
+        var mesh = MeshId.FromNodeNumber(fromNode);
+        _discovered[id] = new LoRaDiscoveredPeerInfo(idShort, nick, mesh.ToHex(), DateTime.UtcNow);
+        _logger.LogInformation("Meshtastic presence from {Nick} {NetworkId} node {Node:X8}", nick, idShort, fromNode);
+
+        MeshatasticTransport? transport;
+        lock (_transportSync)
+            transport = _transport;
+        try
+        {
+            transport?.Remember(networkId.ToWireBytes(), mesh);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Failed to bind mesh id for {NetworkId}", idShort);
+        }
+
+        DirectoryChanged?.Invoke(this, EventArgs.Empty);
+
+        // Answer once per sender. The next card from them is their reply and is not answered again.
+        if (transport == null)
+            return;
+
+        var now = Environment.TickCount64;
+        if (_lastPresenceReplyTicks.TryGetValue(fromNode, out var prev) && now - prev < PresenceReplyIntervalMs)
+            return;
+        _lastPresenceReplyTicks[fromNode] = now;
+
+        var replyTo = fromNode;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await SendOwnPresenceAsync(transport, replyTo, CancellationToken.None).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger.LogWarning(ex, "Meshtastic presence reply to {Node:X8} failed", replyTo);
+            }
+        });
+    }
+
+    private async Task SendOwnPresenceAsync(MeshatasticTransport transport, uint node, CancellationToken cancellationToken)
+    {
+        var user = _auth.CurrentUser;
+        if (user == null)
+            return;
+
+        var payload = PresencePingCodec.Build(
+            CompressedNetworkId.FromShortString(user.NetworkIdShort),
+            user.Nickname,
+            user.DataUdpPort > 0 ? user.DataUdpPort : 17500);
+        await transport.SendOpaqueAsync(node, payload, cancellationToken).ConfigureAwait(false);
     }
 
     private void OnDirectoryChanged()

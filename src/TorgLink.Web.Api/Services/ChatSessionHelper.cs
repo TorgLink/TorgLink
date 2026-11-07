@@ -9,6 +9,14 @@ namespace TorgLink.Web.Api.Services;
 
 internal static class ChatSessionHelper
 {
+    private static Task _shutdown = Task.CompletedTask;
+
+    /// <summary>Next P2P start waits until a logout stop has finished.</summary>
+    public static void TrackShutdown(Task shutdown)
+    {
+        _shutdown = Observe(shutdown);
+    }
+
     public static async Task<ChatP2PSession?> EnsureSessionAsync(
         UserP2pRuntime p2p,
         AuthService auth,
@@ -22,6 +30,7 @@ internal static class ChatSessionHelper
         if (user == null)
             return null;
 
+        await WaitForShutdownAsync().ConfigureAwait(false);
         if (lora != null)
             await LoRaBootstrap.EnsureRunningAsync(lora, p2p, user, logger, cancellationToken).ConfigureAwait(false);
         else
@@ -98,6 +107,7 @@ internal static class ChatSessionHelper
         var user = auth.CurrentUser;
         if (user == null)
             return;
+        await WaitForShutdownAsync().ConfigureAwait(false);
         if (lora != null)
             await LoRaBootstrap.EnsureRunningAsync(lora, p2p, user, logger, cancellationToken).ConfigureAwait(false);
         else
@@ -105,6 +115,25 @@ internal static class ChatSessionHelper
         AppLog.PeerConnected("p2p-runtime", user.NetworkIdShort);
         await MessengerServersBootstrap.EnsureRunningAsync(p2p, logger, cancellationToken).ConfigureAwait(false);
         await p2p.EnsureAllChatSessionsStartedAsync(user, auth, chats, null, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async Task WaitForShutdownAsync()
+    {
+        var pending = _shutdown;
+        if (!pending.IsCompleted)
+            await pending.ConfigureAwait(false);
+    }
+
+    private static async Task Observe(Task shutdown)
+    {
+        try
+        {
+            await shutdown.ConfigureAwait(false);
+        }
+        catch
+        {
+            // Logout already dropped the session; a failed stop must not block the next login.
+        }
     }
 
     public static string Initials(string name)
