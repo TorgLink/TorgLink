@@ -33,6 +33,7 @@ public sealed class MeshtasticTransportHost : IAdditionalTransportProvider, IAsy
     private readonly object _transportSync = new();
 
     private MeshatasticTransport? _transport;
+    private MeshatasticTransportOptions? _activeOptions;
     private LoRaTransportSettings _settings = new();
     private readonly ConcurrentDictionary<string, LoRaDiscoveredPeerInfo> _discovered = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<uint, long> _lastPresenceReplyTicks = new();
@@ -110,6 +111,14 @@ public sealed class MeshtasticTransportHost : IAdditionalTransportProvider, IAsy
                 return;
             }
 
+            // Already running on the same board settings: keep the COM session open instead of
+            // stop+start churn on every page appearing (the board resets on the DTR edge each reopen).
+            lock (_transportSync)
+            {
+                if (_transport != null && ActiveOptionsMatch(_settings))
+                    return;
+            }
+
             var jurisdiction = JurisdictionCatalog.Find(_settings.JurisdictionCode) ?? JurisdictionCatalog.Unset;
             if (jurisdiction.IsUnset)
                 _logger.LogInformation("LoRa enabled but jurisdiction is UNSET — transport will not TX (REQ-RF-2)");
@@ -142,7 +151,10 @@ public sealed class MeshtasticTransportHost : IAdditionalTransportProvider, IAsy
             }
 
             lock (_transportSync)
+            {
                 _transport = transport;
+                _activeOptions = options;
+            }
 
             _logger.LogInformation("Meshatastic transport started on {ComPort} (node {Node})",
                 options.ComPort, transport.LocalMeshId?.ToHex() ?? "?");
@@ -174,6 +186,7 @@ public sealed class MeshtasticTransportHost : IAdditionalTransportProvider, IAsy
         {
             transport = _transport;
             _transport = null;
+            _activeOptions = null;
         }
 
         if (transport == null)
@@ -362,6 +375,20 @@ public sealed class MeshtasticTransportHost : IAdditionalTransportProvider, IAsy
         }
 
         DirectoryChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private bool ActiveOptionsMatch(LoRaTransportSettings settings)
+    {
+        var active = _activeOptions;
+        if (active == null)
+            return false;
+        var baud = settings.BaudRate > 0 ? settings.BaudRate : 115200;
+        return string.Equals(active.ComPort.Trim(), settings.ComPort.Trim(), StringComparison.OrdinalIgnoreCase)
+               && active.BaudRate == baud
+               && string.Equals(
+                   active.Jurisdiction?.Code,
+                   (JurisdictionCatalog.Find(settings.JurisdictionCode) ?? JurisdictionCatalog.Unset).Code,
+                   StringComparison.OrdinalIgnoreCase);
     }
 
     private void OnPresenceReceived(uint fromNode, uint toNode, byte[] payload)

@@ -1,4 +1,4 @@
-using System.IO.Ports;
+using ShortP2P.LoRa;
 
 namespace TorgLink.LoRa;
 
@@ -12,7 +12,8 @@ public static class SerialComPorts
         var names = new List<string>(Standard);
         try
         {
-            foreach (var raw in SerialPort.GetPortNames())
+            // All Meshtastic/serial work goes through the MeshtasticGate singleton (SMT-1/TRL-30).
+            foreach (var raw in MeshtasticGate.Instance.ListPorts())
                 Add(names, raw);
         }
         catch
