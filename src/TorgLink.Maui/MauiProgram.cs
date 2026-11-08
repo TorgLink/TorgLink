@@ -275,7 +275,8 @@ public static class MauiProgram
             CreateDirs = true
         };
 
-        var asyncTarget = new AsyncTargetWrapper(fileTarget, 1000, AsyncTargetWrapperOverflowAction.Discard);
+        // Grow: Discard was dropping LoRa TX Info when Crypto DEBUG hex dumps flooded the queue.
+        var asyncTarget = new AsyncTargetWrapper(fileTarget, 5000, AsyncTargetWrapperOverflowAction.Grow);
         config.AddTarget(asyncTarget);
         config.AddRule(NLog.LogLevel.Debug, NLog.LogLevel.Fatal, asyncTarget,
             "ShortP2P.Transport.Bluetooth.*");
@@ -285,8 +286,7 @@ public static class MauiProgram
 #if DEBUG
         config.AddRule(NLog.LogLevel.Debug, NLog.LogLevel.Fatal, asyncTarget,
             "ShortP2P.Transport.*");
-        config.AddRule(NLog.LogLevel.Debug, NLog.LogLevel.Fatal, asyncTarget,
-            "ShortP2P.Crypto.*");
+        // Crypto plaintext hex is Trace-only now; do not enable Debug for ShortP2P.Crypto.* here.
 #endif
         config.AddRule(NLog.LogLevel.Info, NLog.LogLevel.Fatal, asyncTarget);
         LogManager.Configuration = config;

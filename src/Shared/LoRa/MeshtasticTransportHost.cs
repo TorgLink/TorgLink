@@ -43,13 +43,16 @@ public sealed class MeshtasticTransportHost : IAdditionalTransportProvider, IAsy
     private CancellationTokenSource? _presenceLoopCts;
     private Task? _presenceLoopTask;
 
-    /// <summary>SMT-1 / TRL-30: mesh presence cadence — own presence ping goes out once per minute.</summary>
-    public static readonly TimeSpan PresenceBroadcastInterval = TimeSpan.FromMinutes(1);
+    /// <summary>
+    ///     Mesh presence cadence. Once per minute at ~0.45 s airtime each eats most of the 1%
+    ///     hourly TX budget (~27 of 36 s), starving handshake/chat chunks; 5 minutes leaves headroom.
+    /// </summary>
+    public static readonly TimeSpan PresenceBroadcastInterval = TimeSpan.FromMinutes(5);
 
-    /// <summary>Online window: with 1-minute pings a peer stays online until two pings in a row are missed.</summary>
-    private static readonly TimeSpan PresenceFreshness = TimeSpan.FromMinutes(2);
+    /// <summary>Online window: with 5-minute pings a peer stays online until two pings in a row are missed.</summary>
+    private static readonly TimeSpan PresenceFreshness = TimeSpan.FromMinutes(12);
 
-    private const long PresenceReplyIntervalMs = 20_000;
+    private const long PresenceReplyIntervalMs = 60_000;
 
     /// <summary>Raised with the peer NetworkId (short form) when a mesh presence from it arrives.</summary>
     public event EventHandler<string>? PeerPresenceSeen;
@@ -521,6 +524,17 @@ public sealed class MeshtasticTransportHost : IAdditionalTransportProvider, IAsy
         {
             try
             {
+                var wait = await MeshtasticGate.Instance
+                    .PeekDutyWaitAsync(32, CancellationToken.None)
+                    .ConfigureAwait(false);
+                if (wait > TimeSpan.Zero)
+                {
+                    _logger.LogInformation(
+                        "Skipping presence reply to {Node:X8} — duty cycle would defer TX for {Seconds:F0}s",
+                        replyTo, wait.TotalSeconds);
+                    return;
+                }
+
                 await SendOwnPresenceAsync(transport, replyTo, CancellationToken.None).ConfigureAwait(false);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
@@ -596,6 +610,18 @@ public sealed class MeshtasticTransportHost : IAdditionalTransportProvider, IAsy
             {
                 try
                 {
+                    // Presence is best-effort: never queue it when the duty-cycle budget is already spent.
+                    var wait = await MeshtasticGate.Instance
+                        .PeekDutyWaitAsync(32, cancellationToken)
+                        .ConfigureAwait(false);
+                    if (wait > TimeSpan.Zero)
+                    {
+                        _logger.LogInformation(
+                            "Skipping mesh presence broadcast — duty cycle would defer TX for {Seconds:F0}s",
+                            wait.TotalSeconds);
+                        continue;
+                    }
+
                     await SendOwnPresenceAsync(transport, MeshatasticTransport.BroadcastNode, cancellationToken)
                         .ConfigureAwait(false);
                 }
