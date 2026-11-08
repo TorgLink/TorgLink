@@ -234,6 +234,68 @@ public sealed class MeshtasticTransportHost : IAdditionalTransportProvider, IAsy
     /// <summary>Mesh peers ping once per minute; online = presence within <see cref="PresenceFreshness" />.</summary>
     public bool IsPeerRecentlySeen(string networkIdShort) => HasRecentPeer(networkIdShort);
 
+    public IReadOnlyList<TransportAddress> GetPeerAddresses(string networkIdShort)
+    {
+        if (!_settings.Enabled || string.IsNullOrWhiteSpace(networkIdShort))
+            return [];
+
+        MeshDirectory? dir;
+        lock (_transportSync)
+            dir = _transport?.Directory;
+        if (dir == null)
+            return [];
+
+        byte[] wire;
+        try
+        {
+            wire = CompressedNetworkId.FromShortString(networkIdShort.Trim()).ToWireBytes();
+        }
+        catch
+        {
+            return [];
+        }
+
+        var destinations = dir.GetActiveDestinations(wire);
+        if (destinations.Count > 0)
+        {
+            var list = new List<TransportAddress>(destinations.Count);
+            foreach (var mesh in destinations)
+                list.Add(MeshatasticTransportAddress.ToTransportAddress(mesh));
+            return list;
+        }
+
+        // Presence may have the MeshId before a confirmed directory binding exists.
+        var id = ChatRepository.CanonicalPeerNetworkId(networkIdShort);
+        if (id.Length > 0 &&
+            _discovered.TryGetValue(id, out var discovered) &&
+            DateTime.UtcNow - discovered.LastSeenUtc <= PresenceFreshness &&
+            TryParseMeshIdHex(discovered.MeshIdHex, out var fromPresence))
+        {
+            return [MeshatasticTransportAddress.ToTransportAddress(fromPresence)];
+        }
+
+        return [];
+    }
+
+    private static bool TryParseMeshIdHex(string? hex, out MeshId meshId)
+    {
+        meshId = null!;
+        if (string.IsNullOrWhiteSpace(hex) || hex.Length % 2 != 0)
+            return false;
+        try
+        {
+            var bytes = Convert.FromHexString(hex);
+            if (bytes.Length is < MeshId.MinLength or > MeshId.MaxLength)
+                return false;
+            meshId = new MeshId(bytes);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     public IReadOnlyList<ITransport> GetDataTransports()
     {
         lock (_transportSync)
