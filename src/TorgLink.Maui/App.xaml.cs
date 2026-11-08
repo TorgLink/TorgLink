@@ -15,14 +15,30 @@ public partial class App : Application
 
     public App()
     {
-        InitializeComponent();
-        MauiLanguageBootstrap.Initialize();
-        ThemeService.LoadAndApply();
-        UiInteractionLog.HookApplication(this);
+        var boot = NLog.LogManager.GetLogger("AppBoot");
+        try
+        {
+            boot.Info("App ctor: InitializeComponent");
+            InitializeComponent();
+            boot.Info("App ctor: MauiLanguageBootstrap");
+            MauiLanguageBootstrap.Initialize();
+            boot.Info("App ctor: ThemeService");
+            ThemeService.LoadAndApply();
+            boot.Info("App ctor: UiInteractionLog");
+            UiInteractionLog.HookApplication(this);
 
-        MainPage = LanguageService.HasChosen
-            ? new NavigationPage(MauiProgram.Services.GetRequiredService<LoginPage>())
-            : new NavigationPage(new LanguageSelectPage());
+            boot.Info("App ctor: creating main page");
+            MainPage = LanguageService.HasChosen
+                ? new NavigationPage(MauiProgram.Services.GetRequiredService<LoginPage>())
+                : new NavigationPage(new LanguageSelectPage());
+            boot.Info("App ctor: main page ready");
+        }
+        catch (Exception ex)
+        {
+            boot.Error(ex, "App ctor failed");
+            NLog.LogManager.Flush();
+            throw;
+        }
     }
 
     protected override void OnStart()

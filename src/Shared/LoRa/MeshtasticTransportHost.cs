@@ -8,6 +8,7 @@ using ShortP2P.Discovery;
 using ShortP2P.Client.Services;
 using ShortP2P.Client.Transport;
 using ShortP2P.LoRa;
+using ShortP2P.LoRa.Reliability;
 using ShortP2P.LoRa.Directory;
 using ShortP2P.LoRa.Jurisdiction;
 using ShortP2P.LoRa.Link;
@@ -39,9 +40,19 @@ public sealed class MeshtasticTransportHost : IAdditionalTransportProvider, IAsy
     private readonly ConcurrentDictionary<uint, long> _lastPresenceReplyTicks = new();
     private Func<byte[], bool>? _isServerNetworkId;
     private int _directorySyncRunning;
+    private CancellationTokenSource? _presenceLoopCts;
+    private Task? _presenceLoopTask;
 
+    /// <summary>SMT-1 / TRL-30: mesh presence cadence — own presence ping goes out once per minute.</summary>
+    public static readonly TimeSpan PresenceBroadcastInterval = TimeSpan.FromMinutes(1);
+
+    /// <summary>Online window: with 1-minute pings a peer stays online until two pings in a row are missed.</summary>
     private static readonly TimeSpan PresenceFreshness = TimeSpan.FromMinutes(2);
+
     private const long PresenceReplyIntervalMs = 20_000;
+
+    /// <summary>Raised with the peer NetworkId (short form) when a mesh presence from it arrives.</summary>
+    public event EventHandler<string>? PeerPresenceSeen;
 
     public MeshtasticTransportHost(
         AuthService auth,
@@ -121,7 +132,16 @@ public sealed class MeshtasticTransportHost : IAdditionalTransportProvider, IAsy
 
             var jurisdiction = JurisdictionCatalog.Find(_settings.JurisdictionCode) ?? JurisdictionCatalog.Unset;
             if (jurisdiction.IsUnset)
-                _logger.LogInformation("LoRa enabled but jurisdiction is UNSET — transport will not TX (REQ-RF-2)");
+                _logger.LogInformation(
+                    "LoRa jurisdiction is UNSET — TX limited to the default 1% duty cycle (REQ-RF-2)");
+
+            // REQ-RF-2: TX 1% / RX 99% of estimated airtime over a rolling hour, never above the region cap.
+            var regionCap = jurisdiction.DutyCycleMaxPercent;
+            var dutyPercent = Math.Min(
+                MeshtasticGate.DefaultDutyCyclePercent,
+                regionCap > 0 ? regionCap : MeshtasticGate.DefaultDutyCyclePercent);
+            await MeshtasticGate.Instance.ConfigureDutyCycleAsync(dutyPercent,
+                DutyCycleBudget.DefaultAirtimePerByteMs, cancellationToken).ConfigureAwait(false);
 
             await StopCoreAsync(cancellationToken).ConfigureAwait(false);
 
@@ -156,6 +176,8 @@ public sealed class MeshtasticTransportHost : IAdditionalTransportProvider, IAsy
                 _activeOptions = options;
             }
 
+            StartPresenceLoop(transport);
+
             _logger.LogInformation("Meshatastic transport started on {ComPort} (node {Node})",
                 options.ComPort, transport.LocalMeshId?.ToHex() ?? "?");
             QueueDirectorySync();
@@ -181,6 +203,8 @@ public sealed class MeshtasticTransportHost : IAdditionalTransportProvider, IAsy
 
     private async Task StopCoreAsync(CancellationToken cancellationToken)
     {
+        await StopPresenceLoopAsync().ConfigureAwait(false);
+
         MeshatasticTransport? transport;
         lock (_transportSync)
         {
@@ -206,6 +230,9 @@ public sealed class MeshtasticTransportHost : IAdditionalTransportProvider, IAsy
 
     public bool IsEnabled(byte kind) =>
         kind == LoRaTransportKind.Meshtastic && _settings.Enabled && IsRunning;
+
+    /// <summary>Mesh peers ping once per minute; online = presence within <see cref="PresenceFreshness" />.</summary>
+    public bool IsPeerRecentlySeen(string networkIdShort) => HasRecentPeer(networkIdShort);
 
     public IReadOnlyList<ITransport> GetDataTransports()
     {
@@ -346,16 +373,8 @@ public sealed class MeshtasticTransportHost : IAdditionalTransportProvider, IAsy
 
         // Same card as the contacts scan (presence 0x31): our network id and nickname.
         // A TorgLink node that hears the broadcast answers with its own card.
-        try
-        {
-            await SendOwnPresenceAsync(transport, MeshatasticTransport.BroadcastNode, cancellationToken)
-                .ConfigureAwait(false);
-        }
-        catch (InvalidOperationException ex) when (ex.Message.Contains("UNSET", StringComparison.Ordinal))
-        {
-            throw new InvalidOperationException(
-                "Регион LoRa не выбран: опрос в эфир не уходит. Выберите jurisdiction в настройках LoRa.", ex);
-        }
+        await SendOwnPresenceAsync(transport, MeshatasticTransport.BroadcastNode, cancellationToken)
+            .ConfigureAwait(false);
 
         var listen = Task.Delay(TimeSpan.FromSeconds(8), cancellationToken);
         var nodes = transport.RefreshRadioNodesAsync(cancellationToken).AsTask();
@@ -410,6 +429,8 @@ public sealed class MeshtasticTransportHost : IAdditionalTransportProvider, IAsy
         _discovered[id] = new LoRaDiscoveredPeerInfo(idShort, nick, mesh.ToHex(), DateTime.UtcNow);
         _logger.LogInformation("Meshtastic presence from {Nick} {NetworkId} node {Node:X8}", nick, idShort, fromNode);
 
+        PeerPresenceSeen?.Invoke(this, idShort);
+
         MeshatasticTransport? transport;
         lock (_transportSync)
             transport = _transport;
@@ -458,6 +479,78 @@ public sealed class MeshtasticTransportHost : IAdditionalTransportProvider, IAsy
             user.Nickname,
             user.DataUdpPort > 0 ? user.DataUdpPort : 17500);
         await transport.SendOpaqueAsync(node, payload, cancellationToken).ConfigureAwait(false);
+    }
+
+    // ---- periodic presence broadcast (SMT-1: once per minute) ----
+
+    private void StartPresenceLoop(MeshatasticTransport transport)
+    {
+        _presenceLoopCts = new CancellationTokenSource();
+        _presenceLoopTask = Task.Run(() => PresenceLoopAsync(transport, _presenceLoopCts.Token));
+    }
+
+    private async Task StopPresenceLoopAsync()
+    {
+        if (_presenceLoopCts != null)
+        {
+            try
+            {
+                await _presenceLoopCts.CancelAsync().ConfigureAwait(false);
+            }
+            catch
+            {
+                // already stopped
+            }
+
+            _presenceLoopCts.Dispose();
+            _presenceLoopCts = null;
+        }
+
+        if (_presenceLoopTask != null)
+        {
+            try
+            {
+                await _presenceLoopTask.ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                // normal stop
+            }
+            catch
+            {
+                // the loop logs its own failures; never block teardown
+            }
+
+            _presenceLoopTask = null;
+        }
+    }
+
+    private async Task PresenceLoopAsync(MeshatasticTransport transport, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var timer = new PeriodicTimer(PresenceBroadcastInterval);
+            while (await timer.WaitForNextTickAsync(cancellationToken).ConfigureAwait(false))
+            {
+                try
+                {
+                    await SendOwnPresenceAsync(transport, MeshatasticTransport.BroadcastNode, cancellationToken)
+                        .ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Mesh presence broadcast failed");
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // stopped together with the transport
+        }
     }
 
     private void OnDirectoryChanged()
