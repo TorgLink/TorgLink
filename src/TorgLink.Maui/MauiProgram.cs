@@ -279,6 +279,9 @@ public static class MauiProgram
         config.AddTarget(asyncTarget);
         config.AddRule(NLog.LogLevel.Debug, NLog.LogLevel.Fatal, asyncTarget,
             "ShortP2P.Transport.Bluetooth.*");
+        // LoRa / Meshtastic send & receive cycles are Trace-level; low volume, needed for radio debugging.
+        config.AddRule(NLog.LogLevel.Trace, NLog.LogLevel.Fatal, asyncTarget,
+            "MeshtasticTransportHost");
 #if DEBUG
         config.AddRule(NLog.LogLevel.Debug, NLog.LogLevel.Fatal, asyncTarget,
             "ShortP2P.Transport.*");
