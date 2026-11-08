@@ -2,7 +2,6 @@ using ShortP2P.Auth;
 using ShortP2P.Client.Data;
 using ShortP2P.Client.Services;
 using ShortP2P.Discovery;
-using LoRaTransportKind = ShortP2P.LoRa.TransportKind;
 using TorgLink.Maui.Services;
 using TorgLink.Localization;
 
@@ -51,23 +50,6 @@ internal static class ChatNav
             {
                 await host.DisplayAlert(LocalizationUtils.GetStringByKey("blacklist.title"), LocalizationUtils.GetStringByKey("blacklist.blocked"), LocalizationUtils.GetStringByKey("ok"))
                     .ConfigureAwait(true);
-                return;
-            }
-
-            if (peer.TransportKind == LoRaTransportKind.Meshtastic)
-            {
-                var existing = await chats.FindChatByPeerNetworkIdAsync(user.Id, peer.NetworkId.ToShortString())
-                    .ConfigureAwait(true);
-                if (existing != null)
-                {
-                    await OpenChatAsync(host, existing.Id).ConfigureAwait(true);
-                    return;
-                }
-
-                await host.DisplayAlert(
-                    LocalizationUtils.GetStringByKey("network.title"),
-                    "Узел в сети TorgLink по Meshtastic. Чат ещё не создан.",
-                    LocalizationUtils.GetStringByKey("ok")).ConfigureAwait(true);
                 return;
             }
         }

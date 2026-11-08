@@ -3,6 +3,7 @@ using TorgLink.Web.Api.Services;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using ShortP2P.Auth;
+using ShortP2P.Auth.Data;
 using ShortP2P.Client;
 using ShortP2P.Client.Bluetooth;
 using ShortP2P.Client.Data;
@@ -702,15 +703,36 @@ internal static class AppEndpoints
             ChatRepository.PeerNetworkIdsEqual(c.NetworkId.ToShortString(), body.NetworkId ?? ""));
         if (peer == null)
         {
+            // Host-transport peer (e.g. LoRa/Meshtastic): start the chat the same way as LAN peers —
+            // send a ChatInvite frame over the mesh transport and wait for the peer's reply invite.
             var mesh = lora.ListDiscoveredPeers().FirstOrDefault(p =>
                 ChatRepository.PeerNetworkIdsEqual(p.NetworkIdShort, body.NetworkId ?? ""));
             if (mesh == null)
                 return Results.NotFound();
-            var existing = await chats.FindChatByPeerNetworkIdAsync(auth.CurrentUser!.Id, mesh.NetworkIdShort)
-                .ConfigureAwait(false);
-            if (existing != null)
-                return Results.Json(new { id = existing.Id, kind = "AlreadyExists" });
-            return Results.BadRequest(new { error = "Узел в сети TorgLink по Meshtastic. Чат ещё не создан." });
+            var idShort = ChatRepository.CanonicalPeerNetworkId(mesh.NetworkIdShort);
+            try
+            {
+                var meshPeer = new DiscoveredLocalPeer(
+                    CompressedNetworkId.FromShortString(idShort),
+                    string.IsNullOrWhiteSpace(mesh.Nickname) ? idShort : mesh.Nickname,
+                    ShortP2P.LoRa.MeshatasticTransportAddress.ToTransportAddress(
+                        new ShortP2P.LoRa.MeshId(Convert.FromHexString(mesh.MeshIdHex))),
+                    ShortP2P.LoRa.TransportKind.Meshtastic,
+                    new DateTimeOffset(DateTime.SpecifyKind(mesh.LastSeenUtc, DateTimeKind.Utc)),
+                    0);
+                var meshResult = await LanChatStartFromDiscovery
+                    .TryStartAsync(meshPeer, auth, chats, p2p.CreateLanChatStartContext()).ConfigureAwait(false);
+                return meshResult.Kind switch
+                {
+                    LanChatStartKind.AlreadyExists or LanChatStartKind.Created when meshResult.Chat != null =>
+                        Results.Json(new { id = meshResult.Chat.Id, kind = meshResult.Kind.ToString() }),
+                    _ => Results.BadRequest(new { error = meshResult.Message ?? "network.error", kind = meshResult.Kind.ToString() })
+                };
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                return Results.BadRequest(new { error = ex.Message, kind = LanChatStartKind.Failed.ToString() });
+            }
         }
         var result = await LanChatStartFromDiscovery
             .TryStartAsync(peer, auth, chats, p2p.CreateLanChatStartContext()).ConfigureAwait(false);
@@ -1328,7 +1350,7 @@ internal static class AppEndpoints
     }
 
     private sealed record NetworkRow(
-        string name, string networkId, string initials, string avatar, bool online, string hops, bool meshOnly = false);
+        string name, string networkId, string initials, string avatar, bool online, string hops);
 
     private sealed record LanRow(string nickname, string networkId, bool online, string transport, string lastSeen);
 

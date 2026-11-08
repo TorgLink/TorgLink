@@ -25,7 +25,6 @@ public sealed class ContactRow
     public bool IsOnline { get; init; }
     public bool IsBot { get; init; }
     public string BotMark { get; init; } = "";
-    public bool MeshOnly { get; init; }
 }
 
 public partial class ContactsPage : ContentPage
@@ -341,9 +340,6 @@ public partial class ContactsPage : ContentPage
         {
             if (row.Chat != null)
                 await ChatNav.OpenChatAsync(this, row.Chat.Id).ConfigureAwait(true);
-            else if (row.MeshOnly)
-                await DisplayAlert(LocalizationUtils.GetStringByKey("tab.contacts"), $"{row.Name}\n{row.Detail}",
-                    LocalizationUtils.GetStringByKey("ok")).ConfigureAwait(true);
             else if (row.Peer != null)
                 await ChatNav.OpenDiscoveredPeerAsync(this, row.Peer).ConfigureAwait(true);
         }

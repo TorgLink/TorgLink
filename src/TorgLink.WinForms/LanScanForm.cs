@@ -269,7 +269,7 @@ public sealed partial class LanScanForm : AppForm
                    c.MessengerServerOnline);
     }
 
-    private static string FormatTransport(TransportKind k) =>
+    private static string FormatTransport(byte k) =>
         k switch
         {
             TransportKind.Udp => "LAN",

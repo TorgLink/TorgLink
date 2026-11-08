@@ -19,7 +19,7 @@ export function NetworkPage() {
           {
             class: "item",
             onclick: async () => {
-              if (n.meshOnly || !n.networkId) {
+              if (!n.networkId) {
                 window.alert(`${n.name} · ${n.hops}`);
                 return;
               }

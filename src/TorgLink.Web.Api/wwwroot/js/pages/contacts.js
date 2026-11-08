@@ -30,10 +30,7 @@ export function ContactsPage() {
           {
             class: "item",
             onclick: async () => {
-              if (c.meshOnly) {
-                window.alert(c.detail || c.name);
-                return;
-              }
+              if (!c.networkId) return;
               if (c.chatId) {
                 nav(`/app/chats/${c.chatId}`);
                 return;
