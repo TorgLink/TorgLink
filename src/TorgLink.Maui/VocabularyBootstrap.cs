@@ -17,7 +17,11 @@ public static class VocabularyBootstrap
         logger.LogInformation("VocabularyBootstrap: AppData cache {Dir}", destDir);
 
         // Prefer packages from ShortP2P.Vocabulary (https://github.com/TorgLink/ShortP2P.Vocabulary, branch dev/0.2).
-        foreach (var name in new[] { "RU_vocabulary_v1.zip", "EN_vocabulary_v1.zip" })
+        foreach (var name in new[]
+                 {
+                     "RU_vocabulary_v1.zip", "EN_vocabulary_v1.zip",
+                     "FR_vocabulary_v1.zip", "DE_vocabulary_v1.zip", "ES_vocabulary_v1.zip"
+                 })
         {
             var dest = Path.Combine(destDir, name);
             var copied = false;
