@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using ShortP2P.Client.ChatMedia.Vocabulary;
+// VocabularyHost lives in the same namespace
 
 namespace TorgLink.Maui;
 
@@ -39,6 +40,14 @@ public static class VocabularyBootstrap
                 logger?.LogWarning("Vocabulary pack {Name} not found in app package (ShortP2P.Vocabulary)", name);
         }
 
-        VocabularyCatalog.Initialize(destDir, logger);
+        if (Directory.EnumerateFiles(destDir, "*_vocabulary_v*.zip").Any())
+        {
+            VocabularyCatalog.Initialize(destDir, logger);
+            return;
+        }
+
+        // Dev / unpackaged: fall back to ShortP2P.Vocabulary submodule next to the repo root.
+        if (!VocabularyHost.TryInitializeNearApp(destDir, logger))
+            logger?.LogWarning("No vocabulary packs available (package or ShortP2P.Vocabulary)");
     }
 }
