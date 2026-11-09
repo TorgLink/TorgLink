@@ -2,6 +2,7 @@ using TorgLink.Localization;
 using TorgLink.Maui.Localization; // MauiLanguageBootstrap
 using TorgLink.Maui.Services;
 using Microsoft.Extensions.Logging;
+using NLog.Extensions.Logging;
 using ShortP2P.Client.Routing;
 using ShortP2P.Client.Services;
 using ShortP2P.Discovery.RouteTables;
@@ -25,7 +26,13 @@ public partial class App : Application
             boot.Info("App ctor: VocabularyBootstrap");
             try
             {
-                VocabularyBootstrap.InitializeAsync().GetAwaiter().GetResult();
+                using var vocabLogFactory = LoggerFactory.Create(b =>
+                {
+                    b.SetMinimumLevel(LogLevel.Information);
+                    b.AddNLog();
+                });
+                var vocabLogger = vocabLogFactory.CreateLogger("Vocabulary");
+                VocabularyBootstrap.InitializeAsync(vocabLogger).GetAwaiter().GetResult();
             }
             catch (Exception ex)
             {

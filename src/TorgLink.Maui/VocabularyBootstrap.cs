@@ -1,6 +1,5 @@
 using Microsoft.Extensions.Logging;
 using ShortP2P.Client.ChatMedia.Vocabulary;
-// VocabularyHost lives in the same namespace
 
 namespace TorgLink.Maui;
 
@@ -12,8 +11,10 @@ public static class VocabularyBootstrap
 {
     public static async Task InitializeAsync(ILogger? logger = null)
     {
+        logger ??= Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
         var destDir = Path.Combine(FileSystem.AppDataDirectory, "vocabularies");
         Directory.CreateDirectory(destDir);
+        logger.LogInformation("VocabularyBootstrap: AppData cache {Dir}", destDir);
 
         // Prefer packages from ShortP2P.Vocabulary (https://github.com/TorgLink/ShortP2P.Vocabulary, branch dev/0.2).
         foreach (var name in new[] { "RU_vocabulary_v1.zip", "EN_vocabulary_v1.zip" })
@@ -28,6 +29,9 @@ public static class VocabularyBootstrap
                     await using var dst = File.Create(dest);
                     await src.CopyToAsync(dst).ConfigureAwait(false);
                     copied = true;
+                    logger.LogInformation(
+                        "VocabularyBootstrap: extracted package asset {Asset} → {Dest} ({Bytes} bytes)",
+                        asset, dest, new FileInfo(dest).Length);
                     break;
                 }
                 catch
@@ -37,17 +41,20 @@ public static class VocabularyBootstrap
             }
 
             if (!copied)
-                logger?.LogWarning("Vocabulary pack {Name} not found in app package (ShortP2P.Vocabulary)", name);
+                logger.LogWarning(
+                    "VocabularyBootstrap: pack {Name} not found in app package (ShortP2P.Vocabulary)", name);
         }
 
         if (Directory.EnumerateFiles(destDir, "*_vocabulary_v*.zip").Any())
         {
+            logger.LogInformation("VocabularyBootstrap: initializing catalog from AppData packs");
             VocabularyCatalog.Initialize(destDir, logger);
             return;
         }
 
         // Dev / unpackaged: fall back to ShortP2P.Vocabulary submodule next to the repo root.
+        logger.LogInformation("VocabularyBootstrap: no packaged zips; trying ShortP2P.Vocabulary near app");
         if (!VocabularyHost.TryInitializeNearApp(destDir, logger))
-            logger?.LogWarning("No vocabulary packs available (package or ShortP2P.Vocabulary)");
+            logger.LogWarning("VocabularyBootstrap: no vocabulary packs available (package or ShortP2P.Vocabulary)");
     }
 }
