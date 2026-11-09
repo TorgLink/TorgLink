@@ -22,6 +22,15 @@ public partial class App : Application
             InitializeComponent();
             boot.Info("App ctor: MauiLanguageBootstrap");
             MauiLanguageBootstrap.Initialize();
+            boot.Info("App ctor: VocabularyBootstrap");
+            try
+            {
+                VocabularyBootstrap.InitializeAsync().GetAwaiter().GetResult();
+            }
+            catch (Exception ex)
+            {
+                boot.Error(ex, "VocabularyBootstrap failed");
+            }
             boot.Info("App ctor: ThemeService");
             ThemeService.LoadAndApply();
             boot.Info("App ctor: UiInteractionLog");
