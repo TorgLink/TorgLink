@@ -153,7 +153,8 @@ public sealed class MeshtasticTransportHost : IAdditionalTransportProvider, IAsy
                 ComPort = _settings.ComPort.Trim(),
                 BaudRate = _settings.BaudRate > 0 ? _settings.BaudRate : 115200,
                 Jurisdiction = jurisdiction,
-                // Tb=60s, Timeout = Tb*(1+0.015*Nrx) so chunk/ack waits track the RX duty share.
+                // Tb=60s, Timeout = Tb*(1+0.015*Nrx) for control/short/medium;
+                // LargePayloadTimeout=180s for large text/binary chunk assemblies (≥1000 B).
                 Retry = RetryConfig.FromTxDutyPercent(dutyPercent),
                 LocalNetworkId = CompressedNetworkId.FromShortString(user.NetworkIdShort).ToWireBytes(),
                 IsServerNetworkId = net => _isServerNetworkId?.Invoke(net) == true
