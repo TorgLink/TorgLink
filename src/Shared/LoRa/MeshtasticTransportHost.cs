@@ -797,28 +797,57 @@ public sealed class MeshtasticTransportHost : IAdditionalTransportProvider, IAsy
             }
         }
 
-        // Clear Kind=5 endpoints on chats whose peer NetworkId no longer owns any MeshId
-        // (module moved to another subscriber — stale MeshId must not keep accepting 0x01/0x02).
+        // Only drop a stored MeshId when the directory shows it owned by a *different* NetworkId.
+        // Temporary absence (presence skipped under duty cycle / TX busy) must not wipe endpoints —
+        // that left peer endpoints=0 and ChatP2pSession rejecting 0x01/0x02 ("endpoint not accepted").
+        var meshOwner = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (shortId, endpoints) in byNetwork)
+        {
+            foreach (var ep in endpoints)
+            {
+                var hex = Convert.ToHexString(ep.Data);
+                meshOwner[hex] = shortId;
+            }
+        }
+
         var chats = await _chats.ListChatsAsync(user.Id).ConfigureAwait(false);
         foreach (var chat in chats)
         {
             var peerShort = ChatRepository.CanonicalPeerNetworkId(chat.PeerNetworkIdShort);
             if (peerShort.Length == 0)
                 continue;
-            if (byNetwork.ContainsKey(peerShort))
+
+            var existing = PeerTransportEndpoints.Parse(chat)
+                .Where(ep => ep.Kind == LoRaTransportKind.Meshtastic)
+                .ToList();
+            if (existing.Count == 0)
                 continue;
 
-            var existing = PeerTransportEndpoints.Parse(chat);
-            if (!existing.Any(ep => ep.Kind == LoRaTransportKind.Meshtastic))
+            var kept = new List<TransportAddress>(existing.Count);
+            var removed = false;
+            foreach (var ep in existing)
+            {
+                var hex = Convert.ToHexString(ep.Data);
+                if (meshOwner.TryGetValue(hex, out var owner) &&
+                    !ChatRepository.PeerNetworkIdsEqual(owner, peerShort))
+                {
+                    removed = true;
+                    continue;
+                }
+
+                kept.Add(ep);
+            }
+
+            if (!removed)
                 continue;
 
             if (await _chats.ReplaceChatTransportEndpointsOfKindAsync(
-                    chat.Id, LoRaTransportKind.Meshtastic, []).ConfigureAwait(false))
+                    chat.Id, LoRaTransportKind.Meshtastic, kept).ConfigureAwait(false))
             {
                 changed = true;
                 _logger.LogDebug(
-                    "Cleared stale LoRa endpoints for chat {ChatId} peer {Peer} (MeshId moved)",
-                    chat.Id, peerShort);
+                    "Pruned moved LoRa endpoints for chat {ChatId} peer {Peer} (kept {Kept})",
+                    chat.Id, peerShort, kept.Count);
             }
         }
 
