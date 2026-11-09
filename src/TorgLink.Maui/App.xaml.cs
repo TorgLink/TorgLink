@@ -94,7 +94,7 @@ public partial class App : Application
         {
             var p2p = MauiProgram.Services.GetRequiredService<UserP2pRuntime>();
             p2p.LocalScan.ClientsChanged += (_, _) =>
-                AppLog.Network.LogInformation("Peer directory changed (LAN/server scan)");
+                AppLog.Network.LogDebug("Peer directory changed (LAN/server scan)");
         }
         catch (Exception ex)
         {
