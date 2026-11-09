@@ -3,7 +3,10 @@ using ShortP2P.Client.ChatMedia.Vocabulary;
 
 namespace TorgLink.Maui;
 
-/// <summary>SMT-3: copy packaged vocabulary zips into AppData and hash once at startup.</summary>
+/// <summary>
+///     SMT-3: copy vocabulary zips from the ShortP2P.Vocabulary submodule (packaged as MauiAsset)
+///     into AppData and BLAKE3-hash them once at startup.
+/// </summary>
 public static class VocabularyBootstrap
 {
     public static async Task InitializeAsync(ILogger? logger = null)
@@ -11,30 +14,29 @@ public static class VocabularyBootstrap
         var destDir = Path.Combine(FileSystem.AppDataDirectory, "vocabularies");
         Directory.CreateDirectory(destDir);
 
+        // Prefer packages from ShortP2P.Vocabulary (https://github.com/TorgLink/ShortP2P.Vocabulary, branch dev/0.2).
         foreach (var name in new[] { "RU_vocabulary_v1.zip", "EN_vocabulary_v1.zip" })
         {
             var dest = Path.Combine(destDir, name);
-            try
+            var copied = false;
+            foreach (var asset in new[] { $"vocabularies/{name}", $"vocabularies\\{name}", name })
             {
-                await using var src = await FileSystem.OpenAppPackageFileAsync($"vocabularies/{name}")
-                    .ConfigureAwait(false);
-                await using var dst = File.Create(dest);
-                await src.CopyToAsync(dst).ConfigureAwait(false);
-            }
-            catch
-            {
-                // Fallback: LogicalName may be flat filename only.
                 try
                 {
-                    await using var src = await FileSystem.OpenAppPackageFileAsync(name).ConfigureAwait(false);
+                    await using var src = await FileSystem.OpenAppPackageFileAsync(asset).ConfigureAwait(false);
                     await using var dst = File.Create(dest);
                     await src.CopyToAsync(dst).ConfigureAwait(false);
+                    copied = true;
+                    break;
                 }
-                catch (Exception ex)
+                catch
                 {
-                    logger?.LogWarning(ex, "Vocabulary pack {Name} not found in app package", name);
+                    // try next logical name
                 }
             }
+
+            if (!copied)
+                logger?.LogWarning("Vocabulary pack {Name} not found in app package (ShortP2P.Vocabulary)", name);
         }
 
         VocabularyCatalog.Initialize(destDir, logger);

@@ -6,3 +6,7 @@
 	path = ShortP2P.LoRa
 	url = https://github.com/IskraMessenger/ShortP2P.LoRa/
 	branch = dev/0.2
+[submodule "ShortP2P.Vocabulary"]
+	path = ShortP2P.Vocabulary
+	url = https://github.com/TorgLink/ShortP2P.Vocabulary.git
+	branch = dev/0.2

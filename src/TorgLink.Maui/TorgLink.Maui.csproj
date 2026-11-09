@@ -104,6 +104,8 @@
         <MauiImage Update="Resources\Images\attach_file.svg" Resize="True" BaseSize="96,96" />
         <MauiFont Include="Resources\Fonts\*" />
         <MauiAsset Include="Resources\Raw\**" LogicalName="%(RecursiveDir)%(Filename)%(Extension)" />
+        <!-- SMT-3: vocabulary packs live in ShortP2P.Vocabulary submodule (dev/0.2). -->
+        <MauiAsset Include="..\..\ShortP2P.Vocabulary\*_vocabulary_v*.zip" LogicalName="vocabularies\%(Filename)%(Extension)" />
     </ItemGroup>
 
     <ItemGroup>
