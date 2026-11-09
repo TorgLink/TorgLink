@@ -171,6 +171,8 @@ internal static partial class StringCatalog
         ["chat.file_type_mismatch"] = "Содержимое не совпадает с типом файла.",
         ["chat.file_empty"] = "Файл пустой.",
         ["chat.video"] = "Видео",
+        ["chat.video_meshtastic_forbidden"] =
+            "Передача видео по пути Meshtastic пока запрещена.",
         ["chat.video_too_big"] =
             "Видео больше лимита. Сжать до {0}?",
         ["chat.size"] = "Размер",

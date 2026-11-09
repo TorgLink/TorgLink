@@ -179,6 +179,15 @@ public partial class ChatDetailPage
 
         var sendName = pick.FileName;
         var isVideo = Video144pTranscoder.IsVideoMime(mime);
+        if (isVideo && session.IsMeshtasticPathActive)
+        {
+            await UiAlertAsync(
+                    LocalizationUtils.GetStringByKey("chat.video"),
+                    LocalizationUtils.GetStringByKey("chat.video_meshtastic_forbidden"))
+                .ConfigureAwait(false);
+            return;
+        }
+
         if (!isVideo)
         {
             var headLen = Math.Min(4096, bytes.Length);
@@ -218,7 +227,18 @@ public partial class ChatDetailPage
         if (choice == photoLabel)
             await CaptureAndQueueCameraPhotoAsync().ConfigureAwait(true);
         else if (choice == videoLabel)
+        {
+            if (_p2pSession?.IsMeshtasticPathActive == true)
+            {
+                await UiAlertAsync(
+                        LocalizationUtils.GetStringByKey("chat.video"),
+                        LocalizationUtils.GetStringByKey("chat.video_meshtastic_forbidden"))
+                    .ConfigureAwait(true);
+                return;
+            }
+
             await CaptureAndQueueCameraVideoAsync().ConfigureAwait(true);
+        }
     }
 
     private async Task CaptureAndQueueCameraPhotoAsync()
@@ -367,6 +387,15 @@ public partial class ChatDetailPage
 
     private async Task SendCameraVideoAsync(ChatP2PSession session, FileResult video, CancellationToken ct)
     {
+        if (session.IsMeshtasticPathActive)
+        {
+            await UiAlertAsync(
+                    LocalizationUtils.GetStringByKey("chat.video"),
+                    LocalizationUtils.GetStringByKey("chat.video_meshtastic_forbidden"))
+                .ConfigureAwait(false);
+            return;
+        }
+
         var bytes = await ReadPickBytesAsync(video, ct).ConfigureAwait(false);
         var fileName = string.IsNullOrWhiteSpace(video.FileName)
             ? $"camera-{DateTime.UtcNow:yyyyMMdd-HHmmss}.mp4"

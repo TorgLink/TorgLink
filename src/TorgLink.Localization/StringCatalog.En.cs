@@ -199,6 +199,8 @@ public static partial class StringCatalog
         ["chat.file_type_mismatch"] = "Content does not match the file type.",
         ["chat.file_empty"] = "File is empty.",
         ["chat.video"] = "Video",
+        ["chat.video_meshtastic_forbidden"] =
+            "Video transfer over the Meshtastic path is not allowed yet.",
         ["chat.video_too_big"] = "Video exceeds the limit. Compress to {0}?",
         ["chat.size"] = "Size",
         ["chat.size_over"] = "File is larger than {0} MB.",

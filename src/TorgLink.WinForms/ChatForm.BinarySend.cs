@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using NAudio.Wave;
 using ShortP2P.Client.ChatMedia;
 using ShortP2P.Discovery;
+using TorgLink.Localization;
 using Timer = System.Windows.Forms.Timer;
 
 namespace TorgLink.WinForms;
@@ -135,6 +136,15 @@ public sealed partial class ChatForm
                 MessageBox.Show(this,
                     "Допустимы офисные документы и видео (.mp4, .mov, .avi, .webm, .ogv, .wmv).",
                     "Файл", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            if (isVideo && _p2pSession!.IsMeshtasticPathActive)
+            {
+                MessageBox.Show(this,
+                    LocalizationUtils.GetStringByKey("chat.video_meshtastic_forbidden"),
+                    LocalizationUtils.GetStringByKey("chat.video"),
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
 
