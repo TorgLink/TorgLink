@@ -226,6 +226,14 @@ public sealed class MeshtasticTransportHost : IAdditionalTransportProvider, IAsy
         transport.Directory.Changed -= OnDirectoryChanged;
         try
         {
+            // Let an in-flight chunk train finish before tearing down the COM session.
+            if (!await transport.WaitForIdleAsync(TimeSpan.FromSeconds(8), cancellationToken)
+                    .ConfigureAwait(false))
+            {
+                _logger.LogWarning(
+                    "Stopping Meshtastic transport while TX still busy after idle wait");
+            }
+
             await transport.DisposeAsync().ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -281,6 +289,58 @@ public sealed class MeshtasticTransportHost : IAdditionalTransportProvider, IAsy
         }
 
         return [];
+    }
+
+    /// <summary>
+    ///     Map a Meshtastic MeshId (radio layer) to the subscriber NetworkId that currently owns it.
+    ///     Prefers confirmed MeshDirectory bindings; falls back to recent presence discovery.
+    /// </summary>
+    public bool TryResolvePeerNetworkId(TransportAddress from, out string networkIdShort)
+    {
+        networkIdShort = "";
+        if (from.Kind != LoRaTransportKind.Meshtastic || !_settings.Enabled)
+            return false;
+
+        MeshId meshId;
+        try
+        {
+            meshId = MeshatasticTransportAddress.FromTransportAddress(from);
+        }
+        catch
+        {
+            return false;
+        }
+
+        MeshDirectory? dir;
+        lock (_transportSync)
+            dir = _transport?.Directory;
+        if (dir != null && dir.TryGetOwnerNetworkId(meshId, out var wire, out _))
+        {
+            try
+            {
+                networkIdShort = CompressedNetworkId.FromWireBytes(wire).ToShortString();
+                return networkIdShort.Length > 0;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        // Unconfirmed presence hint only — never treat MeshId bytes as NetworkId.
+        var meshHex = meshId.ToHex();
+        var now = DateTime.UtcNow;
+        foreach (var pair in _discovered)
+        {
+            if (now - pair.Value.LastSeenUtc > PresenceFreshness)
+                continue;
+            if (!string.Equals(pair.Value.MeshIdHex, meshHex, StringComparison.OrdinalIgnoreCase))
+                continue;
+            networkIdShort = ChatRepository.CanonicalPeerNetworkId(pair.Key);
+            return networkIdShort.Length > 0;
+        }
+
+        return false;
     }
 
     private static bool TryParseMeshIdHex(string? hex, out MeshId meshId)
@@ -527,6 +587,13 @@ public sealed class MeshtasticTransportHost : IAdditionalTransportProvider, IAsy
         {
             try
             {
+                if (transport.IsTxBusy)
+                {
+                    _logger.LogInformation(
+                        "Skipping presence reply to {Node:X8} — chat/chunk TX is busy", replyTo);
+                    return;
+                }
+
                 var wait = await MeshtasticGate.Instance
                     .PeekDutyWaitAsync(32, CancellationToken.None)
                     .ConfigureAwait(false);
@@ -613,7 +680,14 @@ public sealed class MeshtasticTransportHost : IAdditionalTransportProvider, IAsy
             {
                 try
                 {
-                    // Presence is best-effort: never queue it when the duty-cycle budget is already spent.
+                    // Presence is best-effort: never cut into an active chunk train or spent duty budget.
+                    if (transport.IsTxBusy)
+                    {
+                        _logger.LogInformation(
+                            "Skipping mesh presence broadcast — chat/chunk TX is busy");
+                        continue;
+                    }
+
                     var wait = await MeshtasticGate.Instance
                         .PeekDutyWaitAsync(32, cancellationToken)
                         .ConfigureAwait(false);
@@ -687,12 +761,16 @@ public sealed class MeshtasticTransportHost : IAdditionalTransportProvider, IAsy
             string shortId;
             try
             {
-                shortId = CompressedNetworkId.FromWireBytes(b.NetworkId).ToShortString();
+                shortId = ChatRepository.CanonicalPeerNetworkId(
+                    CompressedNetworkId.FromWireBytes(b.NetworkId).ToShortString());
             }
             catch
             {
                 continue;
             }
+
+            if (shortId.Length == 0)
+                continue;
 
             if (!byNetwork.TryGetValue(shortId, out var list))
             {
@@ -703,6 +781,9 @@ public sealed class MeshtasticTransportHost : IAdditionalTransportProvider, IAsy
             list.Add(MeshatasticTransportAddress.ToTransportAddress(new MeshId(b.MeshId)));
         }
 
+        var changed = false;
+
+        // Write current owners.
         foreach (var (shortId, endpoints) in byNetwork)
         {
             var chat = await _chats.FindChatByPeerNetworkIdAsync(user.Id, shortId).ConfigureAwait(false);
@@ -711,10 +792,38 @@ public sealed class MeshtasticTransportHost : IAdditionalTransportProvider, IAsy
             if (await _chats.ReplaceChatTransportEndpointsOfKindAsync(
                     chat.Id, LoRaTransportKind.Meshtastic, endpoints).ConfigureAwait(false))
             {
-                _chats.NotifyChatListChanged();
+                changed = true;
                 _logger.LogDebug("Updated LoRa endpoints for chat {ChatId} peer {Peer}", chat.Id, shortId);
             }
         }
+
+        // Clear Kind=5 endpoints on chats whose peer NetworkId no longer owns any MeshId
+        // (module moved to another subscriber — stale MeshId must not keep accepting 0x01/0x02).
+        var chats = await _chats.ListChatsAsync(user.Id).ConfigureAwait(false);
+        foreach (var chat in chats)
+        {
+            var peerShort = ChatRepository.CanonicalPeerNetworkId(chat.PeerNetworkIdShort);
+            if (peerShort.Length == 0)
+                continue;
+            if (byNetwork.ContainsKey(peerShort))
+                continue;
+
+            var existing = PeerTransportEndpoints.Parse(chat);
+            if (!existing.Any(ep => ep.Kind == LoRaTransportKind.Meshtastic))
+                continue;
+
+            if (await _chats.ReplaceChatTransportEndpointsOfKindAsync(
+                    chat.Id, LoRaTransportKind.Meshtastic, []).ConfigureAwait(false))
+            {
+                changed = true;
+                _logger.LogDebug(
+                    "Cleared stale LoRa endpoints for chat {ChatId} peer {Peer} (MeshId moved)",
+                    chat.Id, peerShort);
+            }
+        }
+
+        if (changed)
+            _chats.NotifyChatListChanged();
     }
 
     public async ValueTask DisposeAsync()
