@@ -44,8 +44,8 @@ public sealed class MeshtasticTransportHost : IAdditionalTransportProvider, IAsy
     private Task? _presenceLoopTask;
 
     /// <summary>
-    ///     Mesh presence cadence. Once per minute at ~0.45 s airtime each eats most of the 1%
-    ///     hourly TX budget (~27 of 36 s), starving handshake/chat chunks; 5 minutes leaves headroom.
+    ///     Mesh presence cadence. Keep-alives stay sparse so chat/handshake keep airtime under the
+    ///     default TX 10% / RX 90% duty budget; 5 minutes leaves headroom for chunked frames.
     /// </summary>
     public static readonly TimeSpan PresenceBroadcastInterval = TimeSpan.FromMinutes(5);
 
@@ -136,9 +136,9 @@ public sealed class MeshtasticTransportHost : IAdditionalTransportProvider, IAsy
             var jurisdiction = JurisdictionCatalog.Find(_settings.JurisdictionCode) ?? JurisdictionCatalog.Unset;
             if (jurisdiction.IsUnset)
                 _logger.LogInformation(
-                    "LoRa jurisdiction is UNSET — TX limited to the default 1% duty cycle (REQ-RF-2)");
+                    "LoRa jurisdiction is UNSET — TX limited to the default 10% duty cycle (REQ-RF-2)");
 
-            // REQ-RF-2: TX 1% / RX 99% of estimated airtime over a rolling hour, never above the region cap.
+            // REQ-RF-2: TX 10% / RX 90% of estimated airtime over a rolling hour, never above the region cap.
             var regionCap = jurisdiction.DutyCycleMaxPercent;
             var dutyPercent = Math.Min(
                 MeshtasticGate.DefaultDutyCyclePercent,
