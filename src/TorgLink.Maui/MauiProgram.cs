@@ -81,11 +81,11 @@ public static class MauiProgram
             });
 
         builder.Logging.ClearProviders();
-        builder.Logging.SetMinimumLevel(Microsoft.Extensions.Logging.LogLevel.Information);
 #if DEBUG
-        // Hex wire/plaintext dumps are LogDebug and compiled only in DEBUG.
-        builder.Logging.AddFilter("ShortP2P.Transport", Microsoft.Extensions.Logging.LogLevel.Debug);
-        builder.Logging.AddFilter("ShortP2P.Crypto", Microsoft.Extensions.Logging.LogLevel.Debug);
+        // Matches nlog.Debug.config (minlevel Trace) copied as nlog.config for Debug builds.
+        builder.Logging.SetMinimumLevel(Microsoft.Extensions.Logging.LogLevel.Trace);
+#else
+        builder.Logging.SetMinimumLevel(Microsoft.Extensions.Logging.LogLevel.Information);
 #endif
         builder.Logging.AddNLog();
 
@@ -258,11 +258,57 @@ public static class MauiProgram
         return app;
     }
 
+    /// <summary>
+    /// Loads <c>nlog.config</c> from the app directory (Debug builds copy <c>nlog.Debug.config</c> as that name).
+    /// Remaps the file target to <see cref="AppLogPaths.LogsDirectory"/> so mobile/desktop paths stay correct.
+    /// </summary>
     private static void ConfigureNLog()
     {
         var logsDir = AppLogPaths.LogsDirectory;
         Directory.CreateDirectory(logsDir);
 
+        var configPath = Path.Combine(AppContext.BaseDirectory, "nlog.config");
+        LoggingConfiguration config;
+        if (File.Exists(configPath))
+        {
+            config = new XmlLoggingConfiguration(configPath);
+            RemapNLogFileTargets(config, logsDir);
+        }
+        else
+        {
+            // Android / missing file: keep the same levels as the XML configs.
+            config = BuildFallbackNLogConfig(logsDir);
+        }
+
+        LogManager.Configuration = config;
+#if DEBUG
+        LogManager.GetCurrentClassLogger().Info(
+            "NLog file target: {Path} (config={Config}, minlevel=Trace)", logsDir, configPath);
+#else
+        LogManager.GetCurrentClassLogger().Info(
+            "NLog file target: {Path} (config={Config}, minlevel=Info)", logsDir, configPath);
+#endif
+    }
+
+    private static void RemapNLogFileTargets(LoggingConfiguration config, string logsDir)
+    {
+        var fileName = Path.Combine(logsDir, "${date:format=dd.MM.yyyy}.log");
+        foreach (var target in config.AllTargets)
+        {
+            switch (target)
+            {
+                case FileTarget file:
+                    file.FileName = fileName;
+                    break;
+                case AsyncTargetWrapper { WrappedTarget: FileTarget wrapped }:
+                    wrapped.FileName = fileName;
+                    break;
+            }
+        }
+    }
+
+    private static LoggingConfiguration BuildFallbackNLogConfig(string logsDir)
+    {
         var config = new LoggingConfiguration();
         var fileTarget = new FileTarget("gui-logfile")
         {
@@ -274,23 +320,14 @@ public static class MauiProgram
             ConcurrentWrites = true,
             CreateDirs = true
         };
-
-        // Grow: Discard was dropping LoRa TX Info when Crypto DEBUG hex dumps flooded the queue.
         var asyncTarget = new AsyncTargetWrapper(fileTarget, 5000, AsyncTargetWrapperOverflowAction.Grow);
         config.AddTarget(asyncTarget);
-        config.AddRule(NLog.LogLevel.Debug, NLog.LogLevel.Fatal, asyncTarget,
-            "ShortP2P.Transport.Bluetooth.*");
-        // LoRa / Meshtastic send & receive cycles are Trace-level; low volume, needed for radio debugging.
-        config.AddRule(NLog.LogLevel.Trace, NLog.LogLevel.Fatal, asyncTarget,
-            "MeshtasticTransportHost");
 #if DEBUG
-        config.AddRule(NLog.LogLevel.Debug, NLog.LogLevel.Fatal, asyncTarget,
-            "ShortP2P.Transport.*");
-        // Crypto plaintext hex is Trace-only now; do not enable Debug for ShortP2P.Crypto.* here.
-#endif
+        config.AddRule(NLog.LogLevel.Trace, NLog.LogLevel.Fatal, asyncTarget);
+#else
         config.AddRule(NLog.LogLevel.Info, NLog.LogLevel.Fatal, asyncTarget);
-        LogManager.Configuration = config;
-        LogManager.GetCurrentClassLogger().Info("NLog file target: {Path}", logsDir);
+#endif
+        return config;
     }
 
     private static void HookAssemblyLoadLogging()

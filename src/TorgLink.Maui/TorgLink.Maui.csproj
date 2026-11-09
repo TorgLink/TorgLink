@@ -146,8 +146,23 @@
         <ProjectReference Include="..\..\ShortP2P\src\ShortP2P.Transport.Bluetooth.Android\ShortP2P.Transport.Bluetooth.Android.csproj" />
     </ItemGroup>
 
-    <ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) != 'android'">
-        <None Update="nlog.config">
+    <!-- Avoid default glob copying both nlog*.config; Debug ships Debug config as nlog.config. -->
+    <ItemGroup>
+        <None Remove="nlog.config" />
+        <None Remove="nlog.Debug.config" />
+        <Content Remove="nlog.config" />
+        <Content Remove="nlog.Debug.config" />
+    </ItemGroup>
+    <!-- Debug ships nlog.Debug.config as nlog.config (Trace+); Release uses nlog.config (Info+). -->
+    <ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) != 'android' and '$(Configuration)' == 'Debug'">
+        <None Include="nlog.Debug.config">
+            <Link>nlog.config</Link>
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+            <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+        </None>
+    </ItemGroup>
+    <ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) != 'android' and '$(Configuration)' != 'Debug'">
+        <None Include="nlog.config">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
             <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
         </None>
