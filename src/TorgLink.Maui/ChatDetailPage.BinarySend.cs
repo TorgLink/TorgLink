@@ -310,6 +310,16 @@ public partial class ChatDetailPage
         if (!ImageAttachHelper.TryGetMimeFromExtension(fileName, out var mime))
             mime = "image/jpeg";
 
+        // TRL-31: the shot must be sent as it was displayed. Apply the orientation
+        // (rotation / selfie-preview mirror) to the pixels so the photo reads left to right
+        // on any platform, including clients that ignore orientation metadata.
+        var normalized = CameraPhotoOrientationNormalizer.Normalize(bytes);
+        if (!ReferenceEquals(normalized, bytes))
+        {
+            bytes = normalized;
+            mime = "image/jpeg";
+        }
+
         var fitted = FitOutgoingImage(bytes, mime);
         if (fitted.Bytes == null)
         {
