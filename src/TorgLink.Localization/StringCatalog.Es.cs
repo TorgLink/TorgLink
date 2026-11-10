@@ -182,7 +182,11 @@ public static partial class StringCatalog
         ["chat.file_empty"] = "El archivo está vacío.",
         ["chat.video"] = "Vídeo",
         ["chat.video_meshtastic_forbidden"] =
-            "El envío de vídeo por la ruta Meshtastic está prohibido por ahora.",
+            "Las transferencias binarias (voz, imágenes, documentos) no están permitidas por la ruta Meshtastic.",
+        ["chat.binary_meshtastic_forbidden"] =
+            "Las transferencias binarias (voz, imágenes, documentos) no están permitidas por la ruta Meshtastic.",
+        ["chat.text_meshtastic_too_long"] =
+            "En Meshtastic el texto puede tener como máximo {0} caracteres. Acorte el mensaje para enviarlo.",
         ["chat.video_too_big"] = "El vídeo supera el límite. ¿Comprimir a {0}?",
         ["chat.size"] = "Tamaño",
         ["chat.size_over"] = "El archivo supera {0} MB.",

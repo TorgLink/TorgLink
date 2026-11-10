@@ -172,7 +172,11 @@ internal static partial class StringCatalog
         ["chat.file_empty"] = "Файл пустой.",
         ["chat.video"] = "Видео",
         ["chat.video_meshtastic_forbidden"] =
-            "Передача видео по пути Meshtastic пока запрещена.",
+            "Передача бинарных данных (голос, изображения, документы) по пути Meshtastic запрещена.",
+        ["chat.binary_meshtastic_forbidden"] =
+            "Передача бинарных данных (голос, изображения, документы) по пути Meshtastic запрещена.",
+        ["chat.text_meshtastic_too_long"] =
+            "По пути Meshtastic текст не длиннее {0} символов. Сократите сообщение, чтобы отправить.",
         ["chat.video_too_big"] =
             "Видео больше лимита. Сжать до {0}?",
         ["chat.size"] = "Размер",

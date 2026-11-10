@@ -28,6 +28,15 @@ public sealed partial class ChatForm
         if (_p2pSession == null)
             return;
 
+        if (_p2pSession.IsMeshtasticPathActive)
+        {
+            MessageBox.Show(this,
+                LocalizationUtils.GetStringByKey("chat.binary_meshtastic_forbidden"),
+                LocalizationUtils.GetStringByKey("chat.file"),
+                MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
         using var dlg = new OpenFileDialog
         {
             Title = "Изображение (JPEG, PNG, GIF, до 10 МБ)",
@@ -111,6 +120,15 @@ public sealed partial class ChatForm
         if (_p2pSession == null)
             return;
 
+        if (_p2pSession.IsMeshtasticPathActive)
+        {
+            MessageBox.Show(this,
+                LocalizationUtils.GetStringByKey("chat.binary_meshtastic_forbidden"),
+                LocalizationUtils.GetStringByKey("chat.file"),
+                MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
         using var dlg = new OpenFileDialog
         {
             Title = "Документ (до 20 МБ) или видео (до 60 МБ)",
@@ -139,11 +157,11 @@ public sealed partial class ChatForm
                 return;
             }
 
-            if (isVideo && _p2pSession!.IsMeshtasticPathActive)
+            if (_p2pSession!.IsMeshtasticPathActive)
             {
                 MessageBox.Show(this,
-                    LocalizationUtils.GetStringByKey("chat.video_meshtastic_forbidden"),
-                    LocalizationUtils.GetStringByKey("chat.video"),
+                    LocalizationUtils.GetStringByKey("chat.binary_meshtastic_forbidden"),
+                    LocalizationUtils.GetStringByKey("chat.file"),
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
@@ -203,6 +221,15 @@ public sealed partial class ChatForm
         EnsureSession(user);
         if (_p2pSession == null)
             return;
+
+        if (_voiceWaveIn == null && _p2pSession.IsMeshtasticPathActive)
+        {
+            MessageBox.Show(this,
+                LocalizationUtils.GetStringByKey("chat.binary_meshtastic_forbidden"),
+                LocalizationUtils.GetStringByKey("chat.voice"),
+                MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
 
         if (_voiceWaveIn != null)
         {

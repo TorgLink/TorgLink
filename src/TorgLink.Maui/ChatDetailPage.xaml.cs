@@ -1200,6 +1200,17 @@ public partial class ChatDetailPage : ContentPage
             return;
         }
 
+        if (session.IsMeshtasticPathActive && text.Length > ChatP2PSession.MaxMeshtasticMessageChars)
+        {
+            var warn = string.Format(
+                LocalizationUtils.GetStringByKey("chat.text_meshtastic_too_long"),
+                ChatP2PSession.MaxMeshtasticMessageChars);
+            await DisplayAlert(LocalizationUtils.GetStringByKey("chat.send"), warn, LocalizationUtils.GetStringByKey("ok"))
+                .ConfigureAwait(true);
+            ShowDeliveryIssue(warn);
+            return;
+        }
+
         ClearDeliveryIssue();
 
         try
@@ -1253,6 +1264,15 @@ public partial class ChatDetailPage : ContentPage
     private async Task StartVoiceRecordingAsync()
     {
         ClearDeliveryIssue();
+        if (_p2pSession?.IsMeshtasticPathActive == true)
+        {
+            var msg = LocalizationUtils.GetStringByKey("chat.binary_meshtastic_forbidden");
+            await DisplayAlert(LocalizationUtils.GetStringByKey("chat.voice"), msg, LocalizationUtils.GetStringByKey("ok"))
+                .ConfigureAwait(true);
+            ShowDeliveryIssue(msg);
+            return;
+        }
+
         var mic = await Permissions.RequestAsync<Permissions.Microphone>().ConfigureAwait(true);
         if (mic != PermissionStatus.Granted)
         {

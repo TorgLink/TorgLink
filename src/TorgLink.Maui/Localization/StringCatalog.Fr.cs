@@ -168,7 +168,11 @@ internal static partial class StringCatalog
         ["chat.file_empty"] = "Le fichier est vide.",
         ["chat.video"] = "Vidéo",
         ["chat.video_meshtastic_forbidden"] =
-            "L'envoi de vidéo via le chemin Meshtastic est provisoirement interdit.",
+            "Les transferts binaires (voix, images, documents) ne sont pas autorisés via Meshtastic.",
+        ["chat.binary_meshtastic_forbidden"] =
+            "Les transferts binaires (voix, images, documents) ne sont pas autorisés via Meshtastic.",
+        ["chat.text_meshtastic_too_long"] =
+            "Sur Meshtastic, le texte est limité à {0} caractères. Raccourcissez le message pour l'envoyer.",
         ["chat.video_too_big"] = "La vidéo dépasse la limite. Compresser à {0} ?",
         ["chat.size"] = "Taille",
         ["chat.size_over"] = "Le fichier dépasse {0} Mo (maxDocumentBytes dans chat-media.json).",
