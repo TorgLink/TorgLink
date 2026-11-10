@@ -34,6 +34,14 @@ public sealed class LoRaPeerRow
 
 public partial class NetworkPage : ContentPage
 {
+    private const string StatusOnline = "online";
+    private const string StatusSeen = "seen";
+    private const string StatusActive = "active";
+    private const string StatusInactive = "inactive";
+    private const string DetailMeshtasticSuffix = " · Meshtastic";
+    private const string DetailConfirmedSuffix = " · confirmed";
+    private const string DetailUnconfirmedSuffix = " · unconfirmed";
+
     private readonly AuthService _auth;
     private readonly IBluetoothRadioCatalog _bluetoothCatalog;
     private readonly ILogger<NetworkPage> _logger;
@@ -135,8 +143,8 @@ public partial class NetworkPage : ContentPage
             _loraPeers.Add(new LoRaPeerRow
             {
                 NetworkIdShort = found.Nickname,
-                Detail = $"{found.NetworkIdShort} · Meshtastic",
-                Status = _lora.HasRecentPeer(found.NetworkIdShort) ? "online" : "seen"
+                Detail = found.NetworkIdShort + DetailMeshtasticSuffix,
+                Status = _lora.HasRecentPeer(found.NetworkIdShort) ? StatusOnline : StatusSeen
             });
         }
 
@@ -152,8 +160,8 @@ public partial class NetworkPage : ContentPage
             {
                 NetworkIdShort = peer.NetworkIdShort,
                 Detail = $"{peer.Subject} · Mesh {peer.MeshIdHex}" +
-                         (peer.Confirmed ? " · confirmed" : " · unconfirmed"),
-                Status = peer.IsActive ? "active" : "inactive"
+                         (peer.Confirmed ? DetailConfirmedSuffix : DetailUnconfirmedSuffix),
+                Status = peer.IsActive ? StatusActive : StatusInactive
             });
         }
 

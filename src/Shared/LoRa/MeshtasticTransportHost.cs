@@ -125,6 +125,9 @@ public sealed class MeshtasticTransportHost : IAdditionalTransportProvider, IAsy
                 return;
             }
 
+            var jurisdiction = JurisdictionCatalog.Find(_settings.JurisdictionCode) ?? JurisdictionCatalog.Unset;
+            var txPower = LoRaTxPower.EffectiveForBoard(_settings.TxPowerDbm, jurisdiction);
+
             // Already running on the same board settings: keep the COM session open instead of
             // stop+start churn on every page appearing (the board resets on the DTR edge each reopen).
             lock (_transportSync)
@@ -133,7 +136,6 @@ public sealed class MeshtasticTransportHost : IAdditionalTransportProvider, IAsy
                     return;
             }
 
-            var jurisdiction = JurisdictionCatalog.Find(_settings.JurisdictionCode) ?? JurisdictionCatalog.Unset;
             if (jurisdiction.IsUnset)
                 _logger.LogInformation(
                     "LoRa jurisdiction is UNSET — TX limited to the default 10% duty cycle (REQ-RF-2)");
@@ -153,6 +155,7 @@ public sealed class MeshtasticTransportHost : IAdditionalTransportProvider, IAsy
                 ComPort = _settings.ComPort.Trim(),
                 BaudRate = _settings.BaudRate > 0 ? _settings.BaudRate : 115200,
                 Jurisdiction = jurisdiction,
+                TxPowerDbm = txPower,
                 // Tb=60s, Timeout = Tb*(1+0.015*Nrx) for control/short/medium;
                 // LargePayloadTimeout=180s for large text/binary chunk assemblies (≥1000 B).
                 Retry = RetryConfig.FromTxDutyPercent(dutyPercent),
@@ -530,12 +533,15 @@ public sealed class MeshtasticTransportHost : IAdditionalTransportProvider, IAsy
         if (active == null)
             return false;
         var baud = settings.BaudRate > 0 ? settings.BaudRate : 115200;
+        var jurisdiction = JurisdictionCatalog.Find(settings.JurisdictionCode) ?? JurisdictionCatalog.Unset;
+        var txPower = LoRaTxPower.EffectiveForBoard(settings.TxPowerDbm, jurisdiction);
         return string.Equals(active.ComPort.Trim(), settings.ComPort.Trim(), StringComparison.OrdinalIgnoreCase)
                && active.BaudRate == baud
                && string.Equals(
                    active.Jurisdiction?.Code,
-                   (JurisdictionCatalog.Find(settings.JurisdictionCode) ?? JurisdictionCatalog.Unset).Code,
-                   StringComparison.OrdinalIgnoreCase);
+                   jurisdiction.Code,
+                   StringComparison.OrdinalIgnoreCase)
+               && active.TxPowerDbm == txPower;
     }
 
     private void OnPresenceReceived(uint fromNode, uint toNode, byte[] payload)

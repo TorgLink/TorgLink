@@ -78,6 +78,10 @@
                         TextColor="{DynamicResource MidnightBlue}" />
                 <Picker x:Name="LoRaJurisdictionPicker" Title="Jurisdiction"
                         BackgroundColor="{DynamicResource PageBackground}"
+                        TextColor="{DynamicResource MidnightBlue}"
+                        SelectedIndexChanged="OnLoRaJurisdictionChanged" />
+                <Picker x:Name="LoRaTxPowerPicker" Title="TX power (dBm)"
+                        BackgroundColor="{DynamicResource PageBackground}"
                         TextColor="{DynamicResource MidnightBlue}" />
                 <Label x:Name="LoRaStatusLabel" FontSize="12" TextColor="{DynamicResource MutedText}" />
                 <Button x:Name="LoRaSaveButton" Text="Apply LoRa" Clicked="OnLoRaSaveClicked"

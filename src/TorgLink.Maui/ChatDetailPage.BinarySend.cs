@@ -1,3 +1,4 @@
+using TorgLink.Maui.Helpers;
 using TorgLink.Maui.Services;
 using Microsoft.Extensions.Logging;
 using ShortP2P.Client;
@@ -313,7 +314,7 @@ public partial class ChatDetailPage
         // TRL-31: the shot must be sent as it was displayed. Apply the orientation
         // (rotation / selfie-preview mirror) to the pixels so the photo reads left to right
         // on any platform, including clients that ignore orientation metadata.
-        var normalized = CameraPhotoOrientationNormalizer.Normalize(bytes);
+        var normalized = CameraHelper.Normalize(bytes);
         if (!ReferenceEquals(normalized, bytes))
         {
             bytes = normalized;

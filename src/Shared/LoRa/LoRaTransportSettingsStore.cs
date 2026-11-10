@@ -1,4 +1,5 @@
 using ShortP2P.Auth;
+using ShortP2P.LoRa.Jurisdiction;
 
 namespace TorgLink.LoRa;
 
@@ -9,6 +10,7 @@ public sealed class LoRaTransportSettingsStore(ISessionStorage storage)
     private const string KComPort = "lora_com_port";
     private const string KBaudRate = "lora_baud_rate";
     private const string KJurisdiction = "lora_jurisdiction";
+    private const string KTxPowerDbm = "lora_tx_power_dbm";
 
     private readonly ISessionStorage _storage = storage ?? throw new ArgumentNullException(nameof(storage));
 
@@ -23,6 +25,11 @@ public sealed class LoRaTransportSettingsStore(ISessionStorage storage)
         var jur = await _storage.GetAsync(KJurisdiction).ConfigureAwait(false);
         if (!string.IsNullOrWhiteSpace(jur))
             s.JurisdictionCode = jur.Trim();
+        var profile = JurisdictionCatalog.Find(s.JurisdictionCode) ?? JurisdictionCatalog.Unset;
+        if (int.TryParse(await _storage.GetAsync(KTxPowerDbm).ConfigureAwait(false), out var dbm))
+            s.TxPowerDbm = LoRaTxPower.ClampUi(dbm);
+        else
+            s.TxPowerDbm = LoRaTxPower.DefaultForJurisdiction(profile);
         return s;
     }
 
@@ -35,5 +42,7 @@ public sealed class LoRaTransportSettingsStore(ISessionStorage storage)
         await _storage.SetAsync(KJurisdiction, string.IsNullOrWhiteSpace(settings.JurisdictionCode)
             ? "UNSET"
             : settings.JurisdictionCode.Trim()).ConfigureAwait(false);
+        await _storage.SetAsync(KTxPowerDbm, LoRaTxPower.ClampUi(settings.TxPowerDbm).ToString())
+            .ConfigureAwait(false);
     }
 }

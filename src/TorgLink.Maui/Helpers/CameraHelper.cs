@@ -4,7 +4,7 @@ using SixLabors.ImageSharp.Metadata.Profiles.Exif;
 using SixLabors.ImageSharp.Processing;
 using Img = SixLabors.ImageSharp.Image;
 
-namespace TorgLink.Maui.Services;
+namespace TorgLink.Maui.Helpers;
 
 /// <summary>
 /// A camera photo must be sent exactly as it was displayed.
@@ -14,7 +14,7 @@ namespace TorgLink.Maui.Services;
 /// pixels themselves, so the photo is stored upright (left to right) and
 /// renders the same way on every platform.
 /// </summary>
-public static class CameraPhotoOrientationNormalizer
+public static class CameraHelper
 {
     /// <summary>
     /// Returns the photo with orientation applied: pixels are already rotated
@@ -32,7 +32,9 @@ public static class CameraPhotoOrientationNormalizer
                 !profile.TryGetValue(ExifTag.Orientation, out var orientation) ||
                 orientation is null ||
                 orientation.Value <= 1)
+            {
                 return source;
+            }
 
             // Apply the orientation to the pixels (AutoOrient rotates and un-mirrors),
             // then drop the tag: the sent photo must render the same way, without metadata.
@@ -40,6 +42,7 @@ public static class CameraPhotoOrientationNormalizer
             profile.RemoveValue(ExifTag.Orientation);
             using var ms = new MemoryStream();
             image.SaveAsJpeg(ms, new JpegEncoder { Quality = 92 });
+
             return ms.ToArray();
         }
         catch

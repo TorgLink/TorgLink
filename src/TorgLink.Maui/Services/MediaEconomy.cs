@@ -86,6 +86,7 @@ internal static class MediaEconomy
         var host = MauiProgram.Services.GetService<MeshtasticTransportHost>();
         if (host is { IsRunning: true })
             return Math.Min(limit, MeshtasticTransportHost.MaxBinaryBytes);
+
         return limit;
     }
 

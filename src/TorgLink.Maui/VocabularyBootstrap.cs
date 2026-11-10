@@ -9,6 +9,22 @@ namespace TorgLink.Maui;
 /// </summary>
 public static class VocabularyBootstrap
 {
+    private static readonly string[] PackFileNames =
+    [
+        "RU_vocabulary_v1.zip",
+        "EN_vocabulary_v1.zip",
+        "FR_vocabulary_v1.zip",
+        "DE_vocabulary_v1.zip",
+        "ES_vocabulary_v1.zip"
+    ];
+
+    private static readonly string[] AssetPathPrefixes =
+    [
+        "vocabularies/",
+        "vocabularies\\",
+        ""
+    ];
+
     public static async Task InitializeAsync(ILogger? logger = null)
     {
         logger ??= Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
@@ -17,16 +33,13 @@ public static class VocabularyBootstrap
         logger.LogInformation("VocabularyBootstrap: AppData cache {Dir}", destDir);
 
         // Prefer packages from ShortP2P.Vocabulary (https://github.com/TorgLink/ShortP2P.Vocabulary, branch dev/0.2).
-        foreach (var name in new[]
-                 {
-                     "RU_vocabulary_v1.zip", "EN_vocabulary_v1.zip",
-                     "FR_vocabulary_v1.zip", "DE_vocabulary_v1.zip", "ES_vocabulary_v1.zip"
-                 })
+        foreach (var name in PackFileNames)
         {
             var dest = Path.Combine(destDir, name);
             var copied = false;
-            foreach (var asset in new[] { $"vocabularies/{name}", $"vocabularies\\{name}", name })
+            foreach (var prefix in AssetPathPrefixes)
             {
+                var asset = prefix + name;
                 try
                 {
                     await using var src = await FileSystem.OpenAppPackageFileAsync(asset).ConfigureAwait(false);
@@ -53,6 +66,7 @@ public static class VocabularyBootstrap
         {
             logger.LogInformation("VocabularyBootstrap: initializing catalog from AppData packs");
             VocabularyCatalog.Initialize(destDir, logger);
+
             return;
         }
 

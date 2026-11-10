@@ -16,6 +16,9 @@ namespace TorgLink.Maui;
 
 public partial class SettingsPage : ContentPage
 {
+    private const string DefaultLoRaComPort = "COM1";
+    private const int DefaultLoRaBaudRate = 115200;
+
     private readonly AuthService _auth;
     private readonly IBluetoothTransportProvider _bluetoothTransport;
     private readonly ILogger<SettingsPage> _logger;
@@ -26,9 +29,15 @@ public partial class SettingsPage : ContentPage
     private readonly MeshtasticTransportHost _lora;
     private bool _suppressToggle;
 
-    public SettingsPage(AuthService auth, UserP2pRuntime p2p, P2pRoutingSettingsStore store,
-        IBluetoothTransportProvider bluetoothTransport, DatabaseProviderSettings databaseSettings, ILogger<SettingsPage> logger,
-        ProfileBackupService profileBackup, MeshtasticTransportHost lora)
+    public SettingsPage(
+        AuthService auth,
+        UserP2pRuntime p2p,
+        P2pRoutingSettingsStore store,
+        IBluetoothTransportProvider bluetoothTransport,
+        DatabaseProviderSettings databaseSettings,
+        ILogger<SettingsPage> logger,
+        ProfileBackupService profileBackup,
+        MeshtasticTransportHost lora)
     {
         InitializeComponent();
         _auth = auth;
@@ -116,6 +125,8 @@ public partial class SettingsPage : ContentPage
         LoRaJurisdictionPicker.ItemsSource = codes;
         var idx = codes.FindIndex(c => string.Equals(c, s.JurisdictionCode, StringComparison.OrdinalIgnoreCase));
         LoRaJurisdictionPicker.SelectedIndex = idx >= 0 ? idx : 0;
+        LoRaTxPowerPicker.ItemsSource = LoRaTxPower.UiChoices.Select(d => $"{d} dBm").ToList();
+        SelectLoRaTxPower(s.TxPowerDbm);
         _suppressToggle = false;
         LoRaStatusLabel.Text = _lora.IsRunning
             ? "LoRa transport: running"
@@ -129,15 +140,45 @@ public partial class SettingsPage : ContentPage
         // Applied on Save.
     }
 
+    private void OnLoRaJurisdictionChanged(object? sender, EventArgs e)
+    {
+        if (_suppressToggle)
+            return;
+        var code = LoRaJurisdictionPicker.SelectedItem as string ?? JurisdictionCatalog.UnsetCode;
+        var profile = JurisdictionCatalog.Find(code) ?? JurisdictionCatalog.Unset;
+        SelectLoRaTxPower(LoRaTxPower.DefaultForJurisdiction(profile));
+    }
+
+    private void SelectLoRaTxPower(int dbm)
+    {
+        var clamped = LoRaTxPower.ClampUi(dbm);
+        var choices = LoRaTxPower.UiChoices;
+        var index = choices.ToList().FindIndex(d => d == clamped);
+        if (LoRaTxPowerPicker.ItemsSource == null)
+            LoRaTxPowerPicker.ItemsSource = choices.Select(d => $"{d} dBm").ToList();
+        LoRaTxPowerPicker.SelectedIndex = index >= 0 ? index : choices.Count - 1;
+    }
+
+    private int ReadLoRaTxPowerDbm()
+    {
+        var index = LoRaTxPowerPicker.SelectedIndex;
+        var choices = LoRaTxPower.UiChoices;
+        if (index >= 0 && index < choices.Count)
+            return choices[index];
+
+        return LoRaTxPower.MaxDbm;
+    }
+
     private async void OnLoRaSaveClicked(object? sender, EventArgs e)
     {
         var code = LoRaJurisdictionPicker.SelectedItem as string ?? JurisdictionCatalog.UnsetCode;
         var settings = new LoRaTransportSettings
         {
             Enabled = LoRaSwitch.IsToggled,
-            ComPort = LoRaComPortPicker.SelectedItem as string ?? "COM1",
-            BaudRate = 115200,
-            JurisdictionCode = code
+            ComPort = LoRaComPortPicker.SelectedItem as string ?? DefaultLoRaComPort,
+            BaudRate = DefaultLoRaBaudRate,
+            JurisdictionCode = code,
+            TxPowerDbm = ReadLoRaTxPowerDbm()
         };
         try
         {

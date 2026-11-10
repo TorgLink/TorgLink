@@ -144,9 +144,32 @@ export function SettingsPage() {
         })
       );
       if (!lora.comPort) com.selectedIndex = 0;
-      const jur = el(
+      const powerChoices = lora.txPowerChoices?.length
+        ? lora.txPowerChoices
+        : Array.from({ length: 18 }, (_, i) => 5 + i);
+      const defaultPowerFor = (code) => {
+        const j = (jurisdictions || []).find((x) => x.code === code);
+        if (!j || j.isUnset || !(j.powerMaxDbm > 0)) return 22;
+        return Math.min(22, Math.max(5, j.powerMaxDbm));
+      };
+      const power = el(
         "select",
         { style: { marginTop: "8px", width: "100%" } },
+        powerChoices.map((dbm) => {
+          const o = el("option", { value: String(dbm) }, `${dbm} dBm`);
+          if (Number(dbm) === Number(lora.txPowerDbm)) o.selected = true;
+          return o;
+        })
+      );
+      const jur = el(
+        "select",
+        {
+          style: { marginTop: "8px", width: "100%" },
+          onchange: () => {
+            const next = defaultPowerFor(jur.value);
+            power.value = String(next);
+          }
+        },
         (jurisdictions || []).map((j) => {
           const o = el("option", { value: j.code }, j.code);
           if (j.code === lora.jurisdictionCode) o.selected = true;
@@ -169,6 +192,7 @@ export function SettingsPage() {
           el("div", { class: "switch" }, el("span", null, "Enable"), enabled),
           el("label", null, "COM port", com),
           el("label", null, "Jurisdiction", jur),
+          el("label", null, "TX power", power),
           status,
           el(
             "button",
@@ -180,7 +204,8 @@ export function SettingsPage() {
                   enabled: enabled.checked,
                   comPort: com.value,
                   baudRate: lora.baudRate || 115200,
-                  jurisdictionCode: jur.value
+                  jurisdictionCode: jur.value,
+                  txPowerDbm: Number(power.value) || 22
                 });
                 await load();
               }
