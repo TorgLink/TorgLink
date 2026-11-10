@@ -65,11 +65,20 @@ public sealed partial class MainForm : AppForm
             f.ShowDialog(this);
             ScheduleReload();
         };
-        _btnLogout.Click += async (_, _) =>
+        _btnLogout.Click += (_, _) =>
         {
-            await _auth.LogoutAsync().ConfigureAwait(true);
+            // Stay on the click stack. An await here lets ShowDialog ignore DialogResult,
+            // so the main window stays open and the button looks dead.
+            try
+            {
+                _auth.LogoutAsync().GetAwaiter().GetResult();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Logout failed");
+            }
+
             DialogResult = DialogResult.Retry;
-            Close();
         };
 
         _list.DoubleClick += (_, _) => OpenSelected();

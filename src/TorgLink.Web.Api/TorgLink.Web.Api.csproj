@@ -16,10 +16,17 @@
 
   <ItemGroup>
     <Compile Include="..\Shared\BotHostClaims.cs" Link="Services\BotHostClaims.cs" />
+    <Compile Include="..\Shared\LoRa\LoRaTransportSettings.cs" Link="LoRa\LoRaTransportSettings.cs" />
+    <Compile Include="..\Shared\LoRa\LoRaTransportSettingsStore.cs" Link="LoRa\LoRaTransportSettingsStore.cs" />
+    <Compile Include="..\Shared\LoRa\LoRaMeshPeerInfo.cs" Link="LoRa\LoRaMeshPeerInfo.cs" />
+    <Compile Include="..\Shared\LoRa\MeshtasticTransportHost.cs" Link="LoRa\MeshtasticTransportHost.cs" />
+    <Compile Include="..\Shared\LoRa\LoRaBootstrap.cs" Link="LoRa\LoRaBootstrap.cs" />
+    <Compile Include="..\Shared\LoRa\SerialComPorts.cs" Link="LoRa\SerialComPorts.cs" />
     <ProjectReference Include="..\..\ShortP2P\src\ShortP2P.Auth\ShortP2P.Auth.csproj" />
     <ProjectReference Include="..\..\ShortP2P\src\ShortP2P.Client\ShortP2P.Client.csproj" />
     <ProjectReference Include="..\..\ShortP2P\src\ShortP2P.Discovery\ShortP2P.Discovery.csproj" />
     <ProjectReference Include="..\..\ShortP2P\src\ShortP2P.TrustSystem\ShortP2P.TrustSystem.csproj" />
+    <ProjectReference Include="..\..\ShortP2P.LoRa\src\ShortP2P.LoRa\ShortP2P.LoRa.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -11,6 +11,7 @@ public sealed partial class LoginForm : AppForm
     private readonly AuthService _auth = null!;
     private readonly IServiceProvider _services = null!;
     private readonly ILogger<LoginForm> _logger = null!;
+    private int _logoutRequested;
 
     public LoginForm()
     {
@@ -26,14 +27,23 @@ public sealed partial class LoginForm : AppForm
         _login.Click += async (_, _) => await OnLoginAsync().ConfigureAwait(true);
         _register.Click += OnRegister;
         _import.Click += async (_, _) => await OnImportAsync().ConfigureAwait(true);
+        _exit.Click += async (_, _) => await OnLogoutAsync().ConfigureAwait(true);
         ApplyLocalizedUi();
         Load += async (_, _) =>
         {
-            if (await _auth.TryRestoreSessionAsync().ConfigureAwait(true) && _auth.CurrentUser != null)
+            if (Volatile.Read(ref _logoutRequested) != 0)
+                return;
+            if (!await _auth.TryRestoreSessionAsync().ConfigureAwait(true) || _auth.CurrentUser == null)
+                return;
+            // Click can land while restore is in flight. Logout must win over auto sign-in.
+            if (Volatile.Read(ref _logoutRequested) != 0)
             {
-                DialogResult = DialogResult.OK;
-                Close();
+                await _auth.LogoutAsync().ConfigureAwait(true);
+                return;
             }
+
+            DialogResult = DialogResult.OK;
+            Close();
         };
     }
 
@@ -46,6 +56,19 @@ public sealed partial class LoginForm : AppForm
         _register.Text = LocalizationUtils.GetStringByKey("register.header");
         _import.Text = LocalizationUtils.GetStringByKey("login.import_profile");
         _exit.Text = LocalizationUtils.GetStringByKey("settings.logout");
+    }
+
+    private async Task OnLogoutAsync()
+    {
+        Interlocked.Exchange(ref _logoutRequested, 1);
+        try
+        {
+            await _auth.LogoutAsync().ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Logout failed");
+        }
     }
 
     private async Task OnLoginAsync()

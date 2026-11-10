@@ -125,6 +125,99 @@ export function SettingsPage() {
       )
     );
 
+    // LoRa / Meshtastic
+    try {
+      const [lora, jurisdictions, peers, portNames] = await Promise.all([
+        get("/api/lora"),
+        get("/api/lora/jurisdictions"),
+        get("/api/lora/peers"),
+        get("/api/lora/ports")
+      ]);
+      const ports = portNames?.length ? portNames : ["COM1", "COM2", "COM3", "COM4"];
+      const com = el(
+        "select",
+        { style: { marginTop: "8px", width: "100%" } },
+        ports.map((name) => {
+          const o = el("option", { value: name }, name);
+          if (String(name).toLowerCase() === String(lora.comPort || "").toLowerCase()) o.selected = true;
+          return o;
+        })
+      );
+      if (!lora.comPort) com.selectedIndex = 0;
+      const powerChoices = lora.txPowerChoices?.length
+        ? lora.txPowerChoices
+        : Array.from({ length: 18 }, (_, i) => 5 + i);
+      const defaultPowerFor = (code) => {
+        const j = (jurisdictions || []).find((x) => x.code === code);
+        if (!j || j.isUnset || !(j.powerMaxDbm > 0)) return 22;
+        return Math.min(22, Math.max(5, j.powerMaxDbm));
+      };
+      const power = el(
+        "select",
+        { style: { marginTop: "8px", width: "100%" } },
+        powerChoices.map((dbm) => {
+          const o = el("option", { value: String(dbm) }, `${dbm} dBm`);
+          if (Number(dbm) === Number(lora.txPowerDbm)) o.selected = true;
+          return o;
+        })
+      );
+      const jur = el(
+        "select",
+        {
+          style: { marginTop: "8px", width: "100%" },
+          onchange: () => {
+            const next = defaultPowerFor(jur.value);
+            power.value = String(next);
+          }
+        },
+        (jurisdictions || []).map((j) => {
+          const o = el("option", { value: j.code }, j.code);
+          if (j.code === lora.jurisdictionCode) o.selected = true;
+          return o;
+        })
+      );
+      const enabled = el("input", { type: "checkbox", checked: !!lora.enabled });
+      const status = el(
+        "div",
+        { class: "muted", style: { marginTop: "8px" } },
+        lora.running ? "LoRa: running" : "LoRa: off",
+        ` · max binary ${Math.round((lora.maxBinaryBytes || 20480) / 1024)} KB`,
+        peers?.length ? ` · peers ${peers.length}` : ""
+      );
+      root.appendChild(
+        el(
+          "div",
+          { class: "card" },
+          el("div", { class: "muted" }, "LoRa / Meshtastic"),
+          el("div", { class: "switch" }, el("span", null, "Enable"), enabled),
+          el("label", null, "COM port", com),
+          el("label", null, "Jurisdiction", jur),
+          el("label", null, "TX power", power),
+          status,
+          el(
+            "button",
+            {
+              class: "btn",
+              style: { marginTop: "10px" },
+              onclick: async () => {
+                await post("/api/lora", {
+                  enabled: enabled.checked,
+                  comPort: com.value,
+                  baudRate: lora.baudRate || 115200,
+                  jurisdictionCode: jur.value,
+                  txPowerDbm: Number(power.value) || 22
+                });
+                await load();
+              }
+            },
+            "Apply LoRa"
+          )
+        )
+      );
+    } catch {
+      // LoRa API optional if host failed to start
+    }
+
     // links
     const linkrow = (label, to) => el("div", { class: "linkrow", onclick: () => nav(to) }, label);
     root.appendChild(
@@ -155,8 +248,11 @@ export function SettingsPage() {
         {
           class: "btn danger",
           onclick: async () => {
-            await logout();
-            nav("/login");
+            try {
+              await logout();
+            } finally {
+              nav("/login");
+            }
           }
         },
         t("settings.logout")

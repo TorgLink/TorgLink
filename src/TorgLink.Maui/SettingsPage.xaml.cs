@@ -8,12 +8,17 @@ using ShortP2P.Client.ProfileBackup;
 using ShortP2P.Client.Routing;
 using ShortP2P.Client.Services;
 using ShortP2P.Discovery;
+using ShortP2P.LoRa.Jurisdiction;
 using TorgLink.Localization;
+using TorgLink.LoRa;
 
 namespace TorgLink.Maui;
 
 public partial class SettingsPage : ContentPage
 {
+    private const string DefaultLoRaComPort = "COM1";
+    private const int DefaultLoRaBaudRate = 115200;
+
     private readonly AuthService _auth;
     private readonly IBluetoothTransportProvider _bluetoothTransport;
     private readonly ILogger<SettingsPage> _logger;
@@ -21,11 +26,18 @@ public partial class SettingsPage : ContentPage
     private readonly P2pRoutingSettingsStore _store;
     private readonly DatabaseProviderSettings _databaseSettings;
     private readonly ProfileBackupService _profileBackup;
+    private readonly MeshtasticTransportHost _lora;
     private bool _suppressToggle;
 
-    public SettingsPage(AuthService auth, UserP2pRuntime p2p, P2pRoutingSettingsStore store,
-        IBluetoothTransportProvider bluetoothTransport, DatabaseProviderSettings databaseSettings, ILogger<SettingsPage> logger,
-        ProfileBackupService profileBackup)
+    public SettingsPage(
+        AuthService auth,
+        UserP2pRuntime p2p,
+        P2pRoutingSettingsStore store,
+        IBluetoothTransportProvider bluetoothTransport,
+        DatabaseProviderSettings databaseSettings,
+        ILogger<SettingsPage> logger,
+        ProfileBackupService profileBackup,
+        MeshtasticTransportHost lora)
     {
         InitializeComponent();
         _auth = auth;
@@ -35,6 +47,7 @@ public partial class SettingsPage : ContentPage
         _databaseSettings = databaseSettings;
         _logger = logger;
         _profileBackup = profileBackup;
+        _lora = lora;
         LanguageService.Changed += OnLanguageChanged;
         ProfileRow.GestureRecognizers.Add(new TapGestureRecognizer
         {
@@ -91,11 +104,97 @@ public partial class SettingsPage : ContentPage
 
         // Initialize database provider picker
         InitializeDatabaseProviderPicker();
+        await LoadLoRaSettingsAsync().ConfigureAwait(true);
 
         RebuildLanguageTiles();
         RebuildThemeChips();
         RebuildEconomyChips();
         await Task.CompletedTask.ConfigureAwait(true);
+    }
+
+    private async Task LoadLoRaSettingsAsync()
+    {
+        var s = await _lora.LoadSettingsAsync().ConfigureAwait(true);
+        _suppressToggle = true;
+        LoRaSwitch.IsToggled = s.Enabled;
+        var ports = SerialComPorts.List(s.ComPort).ToList();
+        LoRaComPortPicker.ItemsSource = ports;
+        var portIndex = ports.FindIndex(p => string.Equals(p, s.ComPort, StringComparison.OrdinalIgnoreCase));
+        LoRaComPortPicker.SelectedIndex = portIndex >= 0 ? portIndex : 0;
+        var codes = JurisdictionCatalog.Regions.Select(r => r.Code).ToList();
+        LoRaJurisdictionPicker.ItemsSource = codes;
+        var idx = codes.FindIndex(c => string.Equals(c, s.JurisdictionCode, StringComparison.OrdinalIgnoreCase));
+        LoRaJurisdictionPicker.SelectedIndex = idx >= 0 ? idx : 0;
+        LoRaTxPowerPicker.ItemsSource = LoRaTxPower.UiChoices.Select(d => $"{d} dBm").ToList();
+        SelectLoRaTxPower(s.TxPowerDbm);
+        _suppressToggle = false;
+        LoRaStatusLabel.Text = _lora.IsRunning
+            ? "LoRa transport: running"
+            : s.Enabled
+                ? "LoRa transport: not running (check COM / jurisdiction)"
+                : "LoRa transport: off";
+    }
+
+    private void OnLoRaToggled(object? sender, ToggledEventArgs e)
+    {
+        // Applied on Save.
+    }
+
+    private void OnLoRaJurisdictionChanged(object? sender, EventArgs e)
+    {
+        if (_suppressToggle)
+            return;
+        var code = LoRaJurisdictionPicker.SelectedItem as string ?? JurisdictionCatalog.UnsetCode;
+        var profile = JurisdictionCatalog.Find(code) ?? JurisdictionCatalog.Unset;
+        SelectLoRaTxPower(LoRaTxPower.DefaultForJurisdiction(profile));
+    }
+
+    private void SelectLoRaTxPower(int dbm)
+    {
+        var clamped = LoRaTxPower.ClampUi(dbm);
+        var choices = LoRaTxPower.UiChoices;
+        var index = choices.ToList().FindIndex(d => d == clamped);
+        if (LoRaTxPowerPicker.ItemsSource == null)
+            LoRaTxPowerPicker.ItemsSource = choices.Select(d => $"{d} dBm").ToList();
+        LoRaTxPowerPicker.SelectedIndex = index >= 0 ? index : choices.Count - 1;
+    }
+
+    private int ReadLoRaTxPowerDbm()
+    {
+        var index = LoRaTxPowerPicker.SelectedIndex;
+        var choices = LoRaTxPower.UiChoices;
+        if (index >= 0 && index < choices.Count)
+            return choices[index];
+
+        return LoRaTxPower.MaxDbm;
+    }
+
+    private async void OnLoRaSaveClicked(object? sender, EventArgs e)
+    {
+        var code = LoRaJurisdictionPicker.SelectedItem as string ?? JurisdictionCatalog.UnsetCode;
+        var settings = new LoRaTransportSettings
+        {
+            Enabled = LoRaSwitch.IsToggled,
+            ComPort = LoRaComPortPicker.SelectedItem as string ?? DefaultLoRaComPort,
+            BaudRate = DefaultLoRaBaudRate,
+            JurisdictionCode = code,
+            TxPowerDbm = ReadLoRaTxPowerDbm()
+        };
+        try
+        {
+            await _lora.SaveSettingsAsync(settings).ConfigureAwait(true);
+            var user = _auth.CurrentUser;
+            if (user != null)
+                await LoRaBootstrap.EnsureRunningAsync(_lora, _p2p, user, _logger).ConfigureAwait(true);
+            else if (!settings.Enabled)
+                await _lora.StopAsync().ConfigureAwait(true);
+            await LoadLoRaSettingsAsync().ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Apply LoRa settings failed");
+            LoRaStatusLabel.Text = ex.Message;
+        }
     }
 
     private void InitializeDatabaseProviderPicker()
@@ -437,18 +536,59 @@ public partial class SettingsPage : ContentPage
 
     private async void OnLogoutClicked(object? sender, EventArgs e)
     {
+        if (!LogoutButton.IsEnabled)
+            return;
+        LogoutButton.IsEnabled = false;
+
         try
         {
-            await _p2p.StopAsync().ConfigureAwait(true);
+            await _auth.LogoutAsync().ConfigureAwait(true);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Stop P2P on logout");
+            _logger.LogWarning(ex, "Logout failed");
         }
 
         AppLog.Ui.LogInformation("Logout");
-        await _auth.LogoutAsync().ConfigureAwait(true);
-        Application.Current!.MainPage = new NavigationPage(MauiProgram.Services.GetRequiredService<LoginPage>());
+        ShowLogin();
+
+        var p2p = _p2p;
+        var lora = _lora;
+        var logger = _logger;
+        // Stop after the login page is up. Awaiting this on the click freezes the UI
+        // for the messenger long-poll (and can deadlock WinRT stops on the UI thread).
+        P2pBootstrap.TrackShutdown(Task.Run(async () =>
+        {
+            try
+            {
+                await p2p.StopAsync().ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Stop P2P on logout");
+            }
+
+            try
+            {
+                await lora.StopAsync().ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Stop LoRa on logout");
+            }
+        }));
+    }
+
+    private static void ShowLogin()
+    {
+        var login = new NavigationPage(MauiProgram.Services.GetRequiredService<LoginPage>());
+        var app = Application.Current;
+        if (app == null)
+            return;
+        // MainPage alone does not replace a Shell window that is already open.
+        if (app.Windows.Count > 0)
+            app.Windows[0].Page = login;
+        app.MainPage = login;
     }
 }
 

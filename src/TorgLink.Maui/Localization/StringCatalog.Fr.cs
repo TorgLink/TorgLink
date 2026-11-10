@@ -167,6 +167,8 @@ internal static partial class StringCatalog
         ["chat.file_type_mismatch"] = "Le contenu ne correspond pas au type de fichier.",
         ["chat.file_empty"] = "Le fichier est vide.",
         ["chat.video"] = "Vidéo",
+        ["chat.video_meshtastic_forbidden"] =
+            "L'envoi de vidéo via le chemin Meshtastic est provisoirement interdit.",
         ["chat.video_too_big"] = "La vidéo dépasse la limite. Compresser à {0} ?",
         ["chat.size"] = "Taille",
         ["chat.size_over"] = "Le fichier dépasse {0} Mo (maxDocumentBytes dans chat-media.json).",

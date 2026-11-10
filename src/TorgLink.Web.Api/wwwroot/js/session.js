@@ -85,10 +85,13 @@ export async function setThemeId(next) {
 }
 
 export async function logout() {
-  await post("/api/auth/logout");
-  session.user = null;
-  stopHub();
-  bump();
+  try {
+    await post("/api/auth/logout");
+  } finally {
+    session.user = null;
+    stopHub();
+    bump();
+  }
 }
 
 /**

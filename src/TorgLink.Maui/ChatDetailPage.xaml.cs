@@ -305,7 +305,7 @@ public partial class ChatDetailPage : ContentPage
 
             try
             {
-                await _p2p.EnsureStartedAsync(user).ConfigureAwait(false);
+                await P2pBootstrap.EnsureStartedAsync(_p2p, user, _logger).ConfigureAwait(false);
                 _p2p.MessengerServers?.Start();
             }
             catch (Exception ex)

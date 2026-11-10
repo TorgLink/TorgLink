@@ -2,6 +2,7 @@ using ShortP2P.Client.ChatMedia;
 using ShortP2P.Client.Services;
 using ShortP2P.Discovery;
 using TorgLink.Localization;
+using TorgLink.LoRa;
 
 namespace TorgLink.Maui.Services;
 
@@ -62,22 +63,32 @@ internal static class MediaEconomy
     private static bool IsUltraEconomy(TrafficQualityMode mode) => ChatMediaOptions.IsSuperEconomy(mode);
 
     public static int ImageLimit(UserP2pRuntime p2p) =>
-        IsUltraEconomy(Mode(p2p)) ? MaxImageBytes : ChatMediaOptions.DefaultMaxImageBytes;
+        CapForLoRa(p2p, IsUltraEconomy(Mode(p2p)) ? MaxImageBytes : ChatMediaOptions.DefaultMaxImageBytes);
 
     public static int DocumentLimit(UserP2pRuntime p2p) =>
-        IsUltraEconomy(Mode(p2p))
+        CapForLoRa(p2p, IsUltraEconomy(Mode(p2p))
             ? ChatMediaOptions.SuperEconomyMaxDocumentBytes
-            : ChatMediaOptions.DefaultMaxDocumentBytes;
+            : ChatMediaOptions.DefaultMaxDocumentBytes);
 
     public static int VideoLimit(UserP2pRuntime p2p) =>
-        IsUltraEconomy(Mode(p2p))
+        CapForLoRa(p2p, IsUltraEconomy(Mode(p2p))
             ? ChatMediaOptions.SuperEconomyMaxVideoBytes
-            : ChatMediaOptions.DefaultMaxVideoBytes;
+            : ChatMediaOptions.DefaultMaxVideoBytes);
 
     public static int VoiceLimit(UserP2pRuntime p2p) =>
-        IsUltraEconomy(Mode(p2p))
+        CapForLoRa(p2p, IsUltraEconomy(Mode(p2p))
             ? ChatMediaOptions.SuperEconomyMaxVoiceBytes
-            : ChatMediaOptions.DefaultMaxVoiceBytes;
+            : ChatMediaOptions.DefaultMaxVoiceBytes);
+
+    /// <summary>SMT-1 / LoRa: 20 KB client↔client binary ceiling while Meshtastic transport is up.</summary>
+    private static int CapForLoRa(UserP2pRuntime p2p, int limit)
+    {
+        var host = MauiProgram.Services.GetService<MeshtasticTransportHost>();
+        if (host is { IsRunning: true })
+            return Math.Min(limit, MeshtasticTransportHost.MaxBinaryBytes);
+
+        return limit;
+    }
 
     /// <summary>
     /// Pins shared <see cref="ChatMediaOptions"/> to the non-ultra ceilings so session validation

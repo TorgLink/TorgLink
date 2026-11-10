@@ -61,6 +61,33 @@
                        VerticalOptions="Center" />
             </Grid>
             <BoxView HeightRequest="1" Color="{DynamicResource Hairline}" Margin="16,0" />
+            <VerticalStackLayout Padding="16,12" Spacing="8">
+                <Grid ColumnDefinitions="*,Auto">
+                    <VerticalStackLayout Spacing="2">
+                        <Label x:Name="LoRaLabel" Text="LoRa / Meshtastic" FontSize="16"
+                               TextColor="{DynamicResource MidnightBlue}" />
+                        <Label x:Name="LoRaHint" FontSize="12" TextColor="{DynamicResource MutedText}"
+                               LineBreakMode="WordWrap"
+                               Text="Serial board transport. Jurisdiction UNSET blocks TX. Binary limit 20 KB while active." />
+                    </VerticalStackLayout>
+                    <Switch x:Name="LoRaSwitch" Grid.Column="1" OnColor="{DynamicResource Accent}"
+                            Toggled="OnLoRaToggled" />
+                </Grid>
+                <Picker x:Name="LoRaComPortPicker" Title="COM port"
+                        BackgroundColor="{DynamicResource PageBackground}"
+                        TextColor="{DynamicResource MidnightBlue}" />
+                <Picker x:Name="LoRaJurisdictionPicker" Title="Jurisdiction"
+                        BackgroundColor="{DynamicResource PageBackground}"
+                        TextColor="{DynamicResource MidnightBlue}"
+                        SelectedIndexChanged="OnLoRaJurisdictionChanged" />
+                <Picker x:Name="LoRaTxPowerPicker" Title="TX power (dBm)"
+                        BackgroundColor="{DynamicResource PageBackground}"
+                        TextColor="{DynamicResource MidnightBlue}" />
+                <Label x:Name="LoRaStatusLabel" FontSize="12" TextColor="{DynamicResource MutedText}" />
+                <Button x:Name="LoRaSaveButton" Text="Apply LoRa" Clicked="OnLoRaSaveClicked"
+                        BackgroundColor="{DynamicResource Accent}" TextColor="{DynamicResource ButtonText}" />
+            </VerticalStackLayout>
+            <BoxView HeightRequest="1" Color="{DynamicResource Hairline}" Margin="16,0" />
             <Grid Padding="16,12" ColumnDefinitions="*,Auto">
                 <VerticalStackLayout Spacing="2">
                     <Label x:Name="LanLabel" FontSize="16" TextColor="{DynamicResource MidnightBlue}" />

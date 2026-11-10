@@ -104,6 +104,8 @@
         <MauiImage Update="Resources\Images\attach_file.svg" Resize="True" BaseSize="96,96" />
         <MauiFont Include="Resources\Fonts\*" />
         <MauiAsset Include="Resources\Raw\**" LogicalName="%(RecursiveDir)%(Filename)%(Extension)" />
+        <!-- SMT-3: vocabulary packs live in ShortP2P.Vocabulary submodule (dev/0.2). -->
+        <MauiAsset Include="..\..\ShortP2P.Vocabulary\*_vocabulary_v*.zip" LogicalName="vocabularies\%(Filename)%(Extension)" />
     </ItemGroup>
 
     <ItemGroup>
@@ -129,18 +131,40 @@
 
     <ItemGroup>
         <Compile Include="..\Shared\BotHostClaims.cs" Link="Services\BotHostClaims.cs" />
+        <Compile Include="..\Shared\LoRa\LoRaTransportSettings.cs" Link="LoRa\LoRaTransportSettings.cs" />
+        <Compile Include="..\Shared\LoRa\LoRaTransportSettingsStore.cs" Link="LoRa\LoRaTransportSettingsStore.cs" />
+        <Compile Include="..\Shared\LoRa\LoRaMeshPeerInfo.cs" Link="LoRa\LoRaMeshPeerInfo.cs" />
+        <Compile Include="..\Shared\LoRa\MeshtasticTransportHost.cs" Link="LoRa\MeshtasticTransportHost.cs" />
+        <Compile Include="..\Shared\LoRa\LoRaBootstrap.cs" Link="LoRa\LoRaBootstrap.cs" />
+        <Compile Include="..\Shared\LoRa\SerialComPorts.cs" Link="LoRa\SerialComPorts.cs" />
         <ProjectReference Include="..\TorgLink.Localization\TorgLink.Localization.csproj" />
         <ProjectReference Include="..\..\ShortP2P\src\ShortP2P.Auth\ShortP2P.Auth.csproj" />
         <ProjectReference Include="..\..\ShortP2P\src\ShortP2P.Client\ShortP2P.Client.csproj" />
         <ProjectReference Include="..\..\ShortP2P\src\ShortP2P.TrustSystem\ShortP2P.TrustSystem.csproj" />
+        <ProjectReference Include="..\..\ShortP2P.LoRa\src\ShortP2P.LoRa\ShortP2P.LoRa.csproj" />
     </ItemGroup>
 
     <ItemGroup Condition="$(TargetFramework.Contains('-android'))">
         <ProjectReference Include="..\..\ShortP2P\src\ShortP2P.Transport.Bluetooth.Android\ShortP2P.Transport.Bluetooth.Android.csproj" />
     </ItemGroup>
 
-    <ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) != 'android'">
-        <None Update="nlog.config">
+    <!-- Avoid default glob copying both nlog*.config; Debug ships Debug config as nlog.config. -->
+    <ItemGroup>
+        <None Remove="nlog.config" />
+        <None Remove="nlog.Debug.config" />
+        <Content Remove="nlog.config" />
+        <Content Remove="nlog.Debug.config" />
+    </ItemGroup>
+    <!-- Debug ships nlog.Debug.config as nlog.config (Trace+); Release uses nlog.config (Info+). -->
+    <ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) != 'android' and '$(Configuration)' == 'Debug'">
+        <None Include="nlog.Debug.config">
+            <Link>nlog.config</Link>
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+            <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+        </None>
+    </ItemGroup>
+    <ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) != 'android' and '$(Configuration)' != 'Debug'">
+        <None Include="nlog.config">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
             <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
         </None>

@@ -180,6 +180,7 @@ public static partial class StringCatalog
         ["chat.file_type_mismatch"] = "内容与文件类型不符。",
         ["chat.file_empty"] = "文件为空。",
         ["chat.video"] = "视频",
+        ["chat.video_meshtastic_forbidden"] = "暂不允许通过 Meshtastic 路径发送视频。",
         ["chat.video_too_big"] = "视频超出限制。压缩到 {0}？",
         ["chat.size"] = "大小",
         ["chat.size_over"] = "文件超过 {0} MB。",

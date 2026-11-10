@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using Microsoft.Extensions.Logging;
 using ShortP2P.Auth;
 using ShortP2P.Auth.Data;
+using ShortP2P.Client.Data;
 using ShortP2P.Client.Qr;
 using ShortP2P.Client.Services;
 using ShortP2P.Crypto;
@@ -9,6 +10,7 @@ using ShortP2P.Discovery;
 using ShortP2P.Transport;
 using ShortP2P.Transport.Abstractions;
 using TorgLink.Localization;
+using TorgLink.LoRa;
 
 namespace TorgLink.Maui;
 
@@ -23,23 +25,42 @@ public sealed class NetworkNodeRow
     public required string Hops { get; init; }
 }
 
+public sealed class LoRaPeerRow
+{
+    public required string NetworkIdShort { get; init; }
+    public required string Detail { get; init; }
+    public required string Status { get; init; }
+}
+
 public partial class NetworkPage : ContentPage
 {
+    private const string StatusOnline = "online";
+    private const string StatusSeen = "seen";
+    private const string StatusActive = "active";
+    private const string StatusInactive = "inactive";
+    private const string DetailMeshtasticSuffix = " · Meshtastic";
+    private const string DetailConfirmedSuffix = " · confirmed";
+    private const string DetailUnconfirmedSuffix = " · unconfirmed";
+
     private readonly AuthService _auth;
     private readonly IBluetoothRadioCatalog _bluetoothCatalog;
     private readonly ILogger<NetworkPage> _logger;
     private readonly UserP2pRuntime _p2p;
+    private readonly MeshtasticTransportHost _lora;
     private readonly ObservableCollection<NetworkNodeRow> _nodes = [];
+    private readonly ObservableCollection<LoRaPeerRow> _loraPeers = [];
 
     public NetworkPage(AuthService auth, UserP2pRuntime p2p, IBluetoothRadioCatalog bluetoothCatalog,
-        ILogger<NetworkPage> logger)
+        MeshtasticTransportHost lora, ILogger<NetworkPage> logger)
     {
         InitializeComponent();
         _auth = auth;
         _p2p = p2p;
         _bluetoothCatalog = bluetoothCatalog;
+        _lora = lora;
         _logger = logger;
         NodesCollection.ItemsSource = _nodes;
+        LoRaPeersCollection.ItemsSource = _loraPeers;
     }
 
     protected override void OnAppearing()
@@ -49,6 +70,8 @@ public partial class NetworkPage : ContentPage
         ApplyLocalizedUi();
         _p2p.LocalScan.ClientsChanged -= OnClientsChanged;
         _p2p.LocalScan.ClientsChanged += OnClientsChanged;
+        _lora.DirectoryChanged -= OnLoRaDirectoryChanged;
+        _lora.DirectoryChanged += OnLoRaDirectoryChanged;
         Refresh();
     }
 
@@ -68,16 +91,21 @@ public partial class NetworkPage : ContentPage
     protected override void OnDisappearing()
     {
         _p2p.LocalScan.ClientsChanged -= OnClientsChanged;
+        _lora.DirectoryChanged -= OnLoRaDirectoryChanged;
         base.OnDisappearing();
     }
 
     private void OnClientsChanged(object? sender, EventArgs e) =>
         MainThread.BeginInvokeOnMainThread(Refresh);
 
+    private void OnLoRaDirectoryChanged(object? sender, EventArgs e) =>
+        MainThread.BeginInvokeOnMainThread(RefreshLoRaPeers);
+
     private void Refresh()
     {
         var user = _auth.CurrentUser;
         Header.Bind(user, _p2p);
+        RefreshLoRaPeers();
         _nodes.Clear();
         foreach (var p in _p2p.LocalScan.Clients.OrderBy(c => GetOnline(c, c.NetworkId.ToShortString())))
         {
@@ -97,6 +125,7 @@ public partial class NetworkPage : ContentPage
                     TransportKind.Udp => "1 hop",
                     TransportKind.Bluetooth => "1 hop",
                     TransportKind.MessengerServer => LocalizationUtils.GetStringByKey("network.servers"),
+                    5 => "LoRa",
                     _ => p.TransportKind.ToString()
                 }
             });
@@ -104,6 +133,40 @@ public partial class NetworkPage : ContentPage
 
         NodesTitle.Text = LocalizationUtils.GetStringByKeyWithFormat("network.nodes_count", _nodes.Count);
         _ = RenderQrAsync(user);
+    }
+
+    private void RefreshLoRaPeers()
+    {
+        _loraPeers.Clear();
+        foreach (var found in _lora.ListDiscoveredPeers())
+        {
+            _loraPeers.Add(new LoRaPeerRow
+            {
+                NetworkIdShort = found.Nickname,
+                Detail = found.NetworkIdShort + DetailMeshtasticSuffix,
+                Status = _lora.HasRecentPeer(found.NetworkIdShort) ? StatusOnline : StatusSeen
+            });
+        }
+
+        var shown = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var found in _lora.ListDiscoveredPeers())
+            shown.Add(ChatRepository.CanonicalPeerNetworkId(found.NetworkIdShort));
+
+        foreach (var peer in _lora.ListPeers().OrderByDescending(p => p.LastSeenUtc))
+        {
+            if (shown.Contains(ChatRepository.CanonicalPeerNetworkId(peer.NetworkIdShort)))
+                continue;
+            _loraPeers.Add(new LoRaPeerRow
+            {
+                NetworkIdShort = peer.NetworkIdShort,
+                Detail = $"{peer.Subject} · Mesh {peer.MeshIdHex}" +
+                         (peer.Confirmed ? DetailConfirmedSuffix : DetailUnconfirmedSuffix),
+                Status = peer.IsActive ? StatusActive : StatusInactive
+            });
+        }
+
+        LoRaPeersTitle.IsVisible = _lora.IsRunning || _loraPeers.Count > 0;
+        LoRaPeersCollection.IsVisible = LoRaPeersTitle.IsVisible;
     }
 
     private bool GetOnline(DiscoveredLocalPeer p, string id)

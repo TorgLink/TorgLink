@@ -12,6 +12,24 @@
             <local:AppHeaderView x:Name="Header" />
             <Label x:Name="NodesTitle" FontAttributes="Bold" FontSize="16"
                    TextColor="{DynamicResource MidnightBlue}" Margin="16,0" />
+            <Label x:Name="LoRaPeersTitle" Text="LoRa / Meshtastic peers" FontAttributes="Bold" FontSize="16"
+                   TextColor="{DynamicResource MidnightBlue}" Margin="16,8,16,0" />
+            <CollectionView x:Name="LoRaPeersCollection" HeightRequest="220" Margin="0,0,0,8">
+                <CollectionView.ItemTemplate>
+                    <DataTemplate>
+                        <Grid Padding="16,6" ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                            <VerticalStackLayout Spacing="1">
+                                <Label Text="{Binding NetworkIdShort}" FontSize="13" FontAttributes="Bold"
+                                       TextColor="{DynamicResource MidnightBlue}" LineBreakMode="TailTruncation" />
+                                <Label Text="{Binding Detail}" FontSize="11" TextColor="{DynamicResource MutedText}"
+                                       LineBreakMode="TailTruncation" />
+                            </VerticalStackLayout>
+                            <Label Grid.Column="1" Text="{Binding Status}" FontSize="11"
+                                   TextColor="{DynamicResource OnlineGreen}" VerticalOptions="Center" />
+                        </Grid>
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+            </CollectionView>
             <CollectionView x:Name="NodesCollection" HeightRequest="180">
                 <CollectionView.ItemTemplate>
                     <DataTemplate>

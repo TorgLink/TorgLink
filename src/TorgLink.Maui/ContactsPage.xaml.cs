@@ -9,6 +9,8 @@ using ShortP2P.Client.Services.MessengerServers;
 using ShortP2P.Discovery;
 using ShortP2P.Transport.Abstractions;
 using TorgLink.Localization;
+using TorgLink.LoRa;
+using LoRaTransportKind = ShortP2P.LoRa.TransportKind;
 
 namespace TorgLink.Maui;
 
@@ -32,16 +34,19 @@ public partial class ContactsPage : ContentPage
     private readonly ChatRepository _chats;
     private readonly ILogger<ContactsPage> _logger;
     private readonly UserP2pRuntime _p2p;
+    private readonly MeshtasticTransportHost _lora;
     private readonly ObservableCollection<ContactRow> _rows = [];
     private bool _scanning;
     private string _search = "";
 
-    public ContactsPage(AuthService auth, ChatRepository chats, UserP2pRuntime p2p, ILogger<ContactsPage> logger)
+    public ContactsPage(AuthService auth, ChatRepository chats, UserP2pRuntime p2p,
+        MeshtasticTransportHost lora, ILogger<ContactsPage> logger)
     {
         InitializeComponent();
         _auth = auth;
         _chats = chats;
         _p2p = p2p;
+        _lora = lora;
         _logger = logger;
         ContactsCollection.ItemsSource = _rows;
     }
@@ -65,7 +70,7 @@ public partial class ContactsPage : ContentPage
     {
         try
         {
-            await _p2p.EnsureStartedAsync(u).ConfigureAwait(false);
+            await P2pBootstrap.EnsureStartedAsync(_p2p, u, _logger).ConfigureAwait(false);
             await MessengerServersBootstrap.EnsureRunningAsync(_p2p, _logger).ConfigureAwait(false);
         }
         catch (Exception ex)
@@ -93,7 +98,9 @@ public partial class ContactsPage : ContentPage
         ScanStatusRow.IsVisible = true;
         try
         {
-            await _p2p.LocalScan.ScanAsync(LocalNetworkScanner.DefaultScanListenDuration).ConfigureAwait(true);
+            await Task.WhenAll(
+                _p2p.LocalScan.ScanAsync(LocalNetworkScanner.DefaultScanListenDuration),
+                _lora.ScanAsync()).ConfigureAwait(true);
             if (_p2p.MessengerServers != null)
             {
                 var bots = await _p2p.MessengerServers.ProbeAndListRemoteBotsAsync(CancellationToken.None)
@@ -183,6 +190,40 @@ public partial class ContactsPage : ContentPage
             });
         }
 
+        foreach (var mesh in _lora.ListDiscoveredPeers())
+        {
+            var id = ChatRepository.CanonicalPeerNetworkId(mesh.NetworkIdShort);
+            if (id.Length == 0 || !seen.Add(id))
+                continue;
+            var nick = string.IsNullOrWhiteSpace(mesh.Nickname) ? id : mesh.Nickname;
+            DiscoveredLocalPeer? peer = null;
+            try
+            {
+                peer = new DiscoveredLocalPeer(
+                    CompressedNetworkId.FromShortString(id),
+                    nick,
+                    ShortP2P.LoRa.MeshatasticTransportAddress.ToTransportAddress(
+                        new ShortP2P.LoRa.MeshId(Convert.FromHexString(mesh.MeshIdHex))),
+                    LoRaTransportKind.Meshtastic,
+                    new DateTimeOffset(DateTime.SpecifyKind(mesh.LastSeenUtc, DateTimeKind.Utc)),
+                    0);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Skip mesh peer {Id}", id);
+            }
+
+            built.Add(new ContactRow
+            {
+                Peer = peer,
+                Name = nick,
+                Detail = $"{id} · Meshtastic",
+                Initials = TorgLinkTheme.Initials(nick),
+                AvatarColor = TorgLinkTheme.AvatarColor(id),
+                IsOnline = _lora.HasRecentPeer(id)
+            });
+        }
+
         await MainThread.InvokeOnMainThreadAsync(() =>
         {
             Header.Bind(u, _p2p);
@@ -229,6 +270,7 @@ public partial class ContactsPage : ContentPage
         if (peer?.TransportKind == TransportKind.MessengerServer)
             return peer.MessengerServerOnline;
         return _p2p.LocalScan.IsPeerSeenRecentlyOnLan(networkIdShort) ||
+               _lora.HasRecentPeer(networkIdShort) ||
                (peer?.MessengerServerOnline ?? false) ||
                _p2p.LocalScan.Clients.Any(c =>
                    ChatRepository.PeerNetworkIdsEqual(c.NetworkId.ToShortString(), networkIdShort) &&
