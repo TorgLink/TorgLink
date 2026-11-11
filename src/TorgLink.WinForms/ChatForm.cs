@@ -741,11 +741,22 @@ public sealed partial class ChatForm : AppForm
 
         EnsureSession(user);
 
+        if (_p2pSession!.IsMeshtasticPathActive && text.Length > ChatP2PSession.MaxMeshtasticMessageChars)
+        {
+            var warn = string.Format(
+                LocalizationUtils.GetStringByKey("chat.text_meshtastic_too_long"),
+                ChatP2PSession.MaxMeshtasticMessageChars);
+            MessageBox.Show(this, warn, LocalizationUtils.GetStringByKey("chat.send"),
+                MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            ShowSendError(warn);
+            return;
+        }
+
         _send.Enabled = false;
         try
         {
             // UI only enqueues Pending into DB; the session flush worker delivers from DB.
-            await _p2pSession!.SendTextAsync(text).ConfigureAwait(false);
+            await _p2pSession.SendTextAsync(text).ConfigureAwait(false);
             if (InvokeRequired)
                 BeginInvoke(new Action(() => _input.Clear()));
             else
