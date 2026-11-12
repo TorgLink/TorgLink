@@ -264,8 +264,9 @@ public sealed class MeshtasticTransportHost : IAdditionalTransportProvider, IAsy
         transport.Directory.Changed -= OnDirectoryChanged;
         try
         {
-            // Let an in-flight chunk train finish before tearing down the COM session.
-            if (!await transport.WaitForIdleAsync(TimeSpan.FromSeconds(8), cancellationToken)
+            // Let an in-flight chunk train / duty wait finish before tearing down the COM session.
+            // Field logs showed 15–46 s duty waits; 8 s was too short and caused dispose mid-TX.
+            if (!await transport.WaitForIdleAsync(TimeSpan.FromSeconds(60), cancellationToken)
                     .ConfigureAwait(false))
             {
                 _logger.LogWarning(
@@ -539,11 +540,30 @@ public sealed class MeshtasticTransportHost : IAdditionalTransportProvider, IAsy
 
         // Same card as the contacts scan (presence 0x31): our network id and nickname.
         // A TorgLink node that hears the broadcast answers with its own card.
+        // Never cut into chat/handshake TX with presence or want_config.
+        if (transport.IsTxBusy)
+        {
+            _logger.LogInformation(
+                "Meshtastic scan skipped presence + want_config — chat/chunk TX is busy");
+            DirectoryChanged?.Invoke(this, EventArgs.Empty);
+            return;
+        }
+
         await SendOwnPresenceAsync(transport, MeshatasticTransport.BroadcastNode, cancellationToken)
             .ConfigureAwait(false);
 
         var listen = Task.Delay(TimeSpan.FromSeconds(8), cancellationToken);
-        var nodes = transport.RefreshRadioNodesAsync(cancellationToken).AsTask();
+        Task nodes;
+        if (transport.IsTxBusy)
+        {
+            _logger.LogInformation("Meshtastic scan skipped want_config — TX became busy after presence");
+            nodes = Task.CompletedTask;
+        }
+        else
+        {
+            nodes = transport.RefreshRadioNodesAsync(cancellationToken).AsTask();
+        }
+
         try
         {
             await Task.WhenAll(listen, nodes).ConfigureAwait(false);
