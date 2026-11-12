@@ -1124,6 +1124,14 @@ internal static class AppEndpoints
             s.JurisdictionCode,
             s.TxPowerDbm,
             txPowerChoices = ShortP2P.LoRa.Jurisdiction.LoRaTxPower.UiChoices,
+            modemPreset = ShortP2P.LoRa.LoRaModemPresets.NormalizeName(s.ModemPreset),
+            modemPresets = ShortP2P.LoRa.LoRaModemPresets.All.Select(p => new
+            {
+                p.Name,
+                range = p.Range.ToString(),
+                speed = p.Speed.ToString(),
+                p.KilobitsText
+            }),
             running = lora.IsRunning,
             maxBinaryBytes = MeshtasticTransportHost.MaxBinaryBytes
         });
@@ -1142,7 +1150,8 @@ internal static class AppEndpoints
             JurisdictionCode = string.IsNullOrWhiteSpace(body.JurisdictionCode)
                 ? "UNSET"
                 : body.JurisdictionCode.Trim(),
-            TxPowerDbm = body.TxPowerDbm
+            TxPowerDbm = body.TxPowerDbm,
+            ModemPreset = ShortP2P.LoRa.LoRaModemPresets.NormalizeName(body.ModemPreset)
         };
         await lora.SaveSettingsAsync(settings).ConfigureAwait(false);
         var user = auth.CurrentUser;
@@ -1378,7 +1387,13 @@ internal static class AppEndpoints
     private sealed record ServerUrlBody(string? BaseUrl);
     private sealed record ActiveBody(bool Active);
     private sealed record SettingsBody(bool? Bluetooth, bool? Lan, bool? Routing, string? TrafficQuality);
-    private sealed record LoRaBody(bool Enabled, string? ComPort, int BaudRate, string? JurisdictionCode, int TxPowerDbm);
+    private sealed record LoRaBody(
+        bool Enabled,
+        string? ComPort,
+        int BaudRate,
+        string? JurisdictionCode,
+        int TxPowerDbm,
+        string? ModemPreset = null);
     private sealed record RoutingBody(
         int MaxSearchHops,
         int SendFailureSearchAttempts,

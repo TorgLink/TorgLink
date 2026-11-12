@@ -156,6 +156,8 @@ public sealed class MeshtasticTransportHost : IAdditionalTransportProvider, IAsy
                 BaudRate = _settings.BaudRate > 0 ? _settings.BaudRate : 115200,
                 Jurisdiction = jurisdiction,
                 TxPowerDbm = txPower,
+                // Both peers must use the same preset. StartAsync merges it into the full LoRaConfig.
+                ModemPreset = LoRaModemPresets.GetOrDefault(_settings.ModemPreset),
                 // Tb=60s, Timeout = Tb*(1+0.015*Nrx) for control/short/medium;
                 // LargePayloadTimeout=180s for large text/binary chunk assemblies (≥1000 B).
                 Retry = RetryConfig.FromTxDutyPercent(dutyPercent),
@@ -541,7 +543,11 @@ public sealed class MeshtasticTransportHost : IAdditionalTransportProvider, IAsy
                    active.Jurisdiction?.Code,
                    jurisdiction.Code,
                    StringComparison.OrdinalIgnoreCase)
-               && active.TxPowerDbm == txPower;
+               && active.TxPowerDbm == txPower
+               && string.Equals(
+                   active.ModemPreset.Name,
+                   LoRaModemPresets.GetOrDefault(settings.ModemPreset).Name,
+                   StringComparison.Ordinal);
     }
 
     private void OnPresenceReceived(uint fromNode, uint toNode, byte[] payload)

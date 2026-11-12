@@ -83,6 +83,20 @@
                 <Picker x:Name="LoRaTxPowerPicker" Title="TX power (dBm)"
                         BackgroundColor="{DynamicResource PageBackground}"
                         TextColor="{DynamicResource MidnightBlue}" />
+                <Label x:Name="LoRaRangeLabel" FontSize="12" TextColor="{DynamicResource MutedText}" Text="Range" />
+                <Picker x:Name="LoRaRangePicker" Title="Range"
+                        BackgroundColor="{DynamicResource PageBackground}"
+                        TextColor="{DynamicResource MidnightBlue}"
+                        SelectedIndexChanged="OnLoRaRangeChanged" />
+                <Label x:Name="LoRaSpeedLabel" FontSize="12" TextColor="{DynamicResource MutedText}" Text="Speed" />
+                <Picker x:Name="LoRaSpeedPicker" Title="Speed"
+                        BackgroundColor="{DynamicResource PageBackground}"
+                        TextColor="{DynamicResource MidnightBlue}"
+                        SelectedIndexChanged="OnLoRaSpeedChanged" />
+                <Label x:Name="LoRaPresetSummary" FontSize="12" TextColor="{DynamicResource MidnightBlue}"
+                       LineBreakMode="WordWrap" />
+                <Label x:Name="LoRaPresetPeers" FontSize="12" TextColor="{DynamicResource MutedText}"
+                       LineBreakMode="WordWrap" />
                 <Label x:Name="LoRaStatusLabel" FontSize="12" TextColor="{DynamicResource MutedText}" />
                 <Button x:Name="LoRaSaveButton" Text="Apply LoRa" Clicked="OnLoRaSaveClicked"
                         BackgroundColor="{DynamicResource Accent}" TextColor="{DynamicResource ButtonText}" />

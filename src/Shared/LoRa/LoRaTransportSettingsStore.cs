@@ -1,4 +1,5 @@
 using ShortP2P.Auth;
+using ShortP2P.LoRa;
 using ShortP2P.LoRa.Jurisdiction;
 
 namespace TorgLink.LoRa;
@@ -11,6 +12,7 @@ public sealed class LoRaTransportSettingsStore(ISessionStorage storage)
     private const string KBaudRate = "lora_baud_rate";
     private const string KJurisdiction = "lora_jurisdiction";
     private const string KTxPowerDbm = "lora_tx_power_dbm";
+    private const string KModemPreset = "lora_modem_preset";
 
     private readonly ISessionStorage _storage = storage ?? throw new ArgumentNullException(nameof(storage));
 
@@ -30,6 +32,8 @@ public sealed class LoRaTransportSettingsStore(ISessionStorage storage)
             s.TxPowerDbm = LoRaTxPower.ClampUi(dbm);
         else
             s.TxPowerDbm = LoRaTxPower.DefaultForJurisdiction(profile);
+        s.ModemPreset = LoRaModemPresets.NormalizeName(
+            await _storage.GetAsync(KModemPreset).ConfigureAwait(false));
         return s;
     }
 
@@ -43,6 +47,8 @@ public sealed class LoRaTransportSettingsStore(ISessionStorage storage)
             ? "UNSET"
             : settings.JurisdictionCode.Trim()).ConfigureAwait(false);
         await _storage.SetAsync(KTxPowerDbm, LoRaTxPower.ClampUi(settings.TxPowerDbm).ToString())
+            .ConfigureAwait(false);
+        await _storage.SetAsync(KModemPreset, LoRaModemPresets.NormalizeName(settings.ModemPreset))
             .ConfigureAwait(false);
     }
 }

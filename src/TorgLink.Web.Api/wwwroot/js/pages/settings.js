@@ -176,6 +176,61 @@ export function SettingsPage() {
           return o;
         })
       );
+      const presetChoices = lora.modemPresets || [];
+      const rangeOrder = ["Short", "Medium", "Long"];
+      const selectedPreset =
+        presetChoices.find((c) => c.name === lora.modemPreset) ||
+        presetChoices.find((c) => c.name === "LONG_FAST") ||
+        presetChoices[0];
+      let presetRange = selectedPreset?.range || "Long";
+      let presetSpeed = selectedPreset?.speed || "Fast";
+      const speedsFor = (range) => presetChoices.filter((c) => c.range === range);
+      const snapSpeed = (range, speed) =>
+        speedsFor(range).some((c) => c.speed === speed) ? speed : "Fast";
+      const currentPreset = () =>
+        speedsFor(presetRange).find((c) => c.speed === presetSpeed) || speedsFor(presetRange)[0];
+      const rangeLabel = (range) => t(`lora.range.${String(range).toLowerCase()}`);
+      const speedLabel = (speed) => t(`lora.speed.${String(speed).toLowerCase()}`);
+      const presetSummary = el("div", { class: "muted", style: { marginTop: "6px" } }, "");
+      const rangeSel = el("select", { style: { marginTop: "8px", width: "100%" } });
+      const speedSel = el("select", { style: { marginTop: "8px", width: "100%" } });
+      function paintPresetSpeed() {
+        presetSpeed = snapSpeed(presetRange, presetSpeed);
+        clear(speedSel);
+        for (const c of speedsFor(presetRange)) {
+          const o = el(
+            "option",
+            { value: c.speed },
+            t("lora.preset.speed_item", speedLabel(c.speed), c.kilobitsText)
+          );
+          if (c.speed === presetSpeed) o.selected = true;
+          speedSel.appendChild(o);
+        }
+        const cur = currentPreset();
+        presetSummary.textContent = cur
+          ? t("lora.preset.summary", rangeLabel(cur.range), speedLabel(cur.speed), cur.kilobitsText)
+          : "";
+      }
+      function paintPresetRange() {
+        clear(rangeSel);
+        for (const range of rangeOrder) {
+          if (!speedsFor(range).length) continue;
+          const o = el("option", { value: range }, rangeLabel(range));
+          if (range === presetRange) o.selected = true;
+          rangeSel.appendChild(o);
+        }
+      }
+      rangeSel.addEventListener("change", () => {
+        presetRange = rangeSel.value;
+        presetSpeed = snapSpeed(presetRange, presetSpeed);
+        paintPresetSpeed();
+      });
+      speedSel.addEventListener("change", () => {
+        presetSpeed = speedSel.value;
+        paintPresetSpeed();
+      });
+      paintPresetRange();
+      paintPresetSpeed();
       const enabled = el("input", { type: "checkbox", checked: !!lora.enabled });
       const status = el(
         "div",
@@ -193,6 +248,10 @@ export function SettingsPage() {
           el("label", null, "COM port", com),
           el("label", null, "Jurisdiction", jur),
           el("label", null, "TX power", power),
+          el("label", null, t("lora.range"), rangeSel),
+          el("label", null, t("lora.speed"), speedSel),
+          presetSummary,
+          el("div", { class: "muted" }, t("lora.preset.peers")),
           status,
           el(
             "button",
@@ -205,7 +264,8 @@ export function SettingsPage() {
                   comPort: com.value,
                   baudRate: lora.baudRate || 115200,
                   jurisdictionCode: jur.value,
-                  txPowerDbm: Number(power.value) || 22
+                  txPowerDbm: Number(power.value) || 22,
+                  modemPreset: currentPreset()?.name || "LONG_FAST"
                 });
                 await load();
               }

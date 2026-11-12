@@ -1,3 +1,4 @@
+using ShortP2P.LoRa;
 using ShortP2P.LoRa.Jurisdiction;
 
 namespace TorgLink.LoRa;
@@ -18,4 +19,10 @@ public sealed class LoRaTransportSettings
 
     /// <summary>TX power in dBm for the settings dropdown (REQ-RF-8), range 5…22.</summary>
     public int TxPowerDbm { get; set; } = LoRaTxPower.MaxDbm;
+
+    /// <summary>
+    ///     Modem preset name (LONG_FAST and the other universal presets).
+    ///     Both peers must use the same preset. Default LONG_FAST.
+    /// </summary>
+    public string ModemPreset { get; set; } = LoRaModemPresets.LongFastName;
 }

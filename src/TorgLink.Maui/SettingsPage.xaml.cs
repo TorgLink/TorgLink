@@ -8,6 +8,7 @@ using ShortP2P.Client.ProfileBackup;
 using ShortP2P.Client.Routing;
 using ShortP2P.Client.Services;
 using ShortP2P.Discovery;
+using ShortP2P.LoRa;
 using ShortP2P.LoRa.Jurisdiction;
 using TorgLink.Localization;
 using TorgLink.LoRa;
@@ -28,6 +29,12 @@ public partial class SettingsPage : ContentPage
     private readonly ProfileBackupService _profileBackup;
     private readonly MeshtasticTransportHost _lora;
     private bool _suppressToggle;
+    private int _loraPresetBind;
+    private LoRaPresetRange _loraRange = LoRaPresetRange.Long;
+    private LoRaPresetSpeed _loraSpeed = LoRaPresetSpeed.Fast;
+
+    private static readonly LoRaPresetRange[] LoRaRanges =
+        [LoRaPresetRange.Short, LoRaPresetRange.Medium, LoRaPresetRange.Long];
 
     public SettingsPage(
         AuthService auth,
@@ -127,6 +134,12 @@ public partial class SettingsPage : ContentPage
         LoRaJurisdictionPicker.SelectedIndex = idx >= 0 ? idx : 0;
         LoRaTxPowerPicker.ItemsSource = LoRaTxPower.UiChoices.Select(d => $"{d} dBm").ToList();
         SelectLoRaTxPower(s.TxPowerDbm);
+        var preset = LoRaModemPresets.GetOrDefault(s.ModemPreset);
+        _loraRange = preset.Range;
+        _loraSpeed = preset.Speed;
+        BindLoRaRangePicker();
+        BindLoRaSpeedPicker();
+        UpdateLoRaPresetSummary();
         _suppressToggle = false;
         LoRaStatusLabel.Text = _lora.IsRunning
             ? "LoRa transport: running"
@@ -169,6 +182,110 @@ public partial class SettingsPage : ContentPage
         return LoRaTxPower.MaxDbm;
     }
 
+    private bool IgnoreLoRaPresetChange => _suppressToggle || _loraPresetBind > 0;
+
+    private void OnLoRaRangeChanged(object? sender, EventArgs e)
+    {
+        if (IgnoreLoRaPresetChange)
+            return;
+        _loraRange = RangeFromPicker();
+        // Long has no Slow; Short/Medium have no Moderate. Fast exists in every family.
+        _loraSpeed = LoRaModemPresets.SnapSpeed(_loraRange, _loraSpeed);
+        BindLoRaSpeedPicker();
+        UpdateLoRaPresetSummary();
+    }
+
+    private void OnLoRaSpeedChanged(object? sender, EventArgs e)
+    {
+        if (IgnoreLoRaPresetChange)
+            return;
+        _loraSpeed = SpeedFromPicker();
+        UpdateLoRaPresetSummary();
+    }
+
+    private void BindLoRaRangePicker()
+    {
+        _loraPresetBind++;
+        try
+        {
+            LoRaRangePicker.ItemsSource = LoRaRanges.Select(RangeText).ToList();
+            var index = Array.IndexOf(LoRaRanges, _loraRange);
+            LoRaRangePicker.SelectedIndex = index >= 0 ? index : Array.IndexOf(LoRaRanges, LoRaPresetRange.Long);
+        }
+        finally
+        {
+            _loraPresetBind--;
+        }
+    }
+
+    private void BindLoRaSpeedPicker()
+    {
+        _loraPresetBind++;
+        try
+        {
+            var speeds = LoRaModemPresets.SpeedsFor(_loraRange);
+            LoRaSpeedPicker.ItemsSource = speeds.Select(SpeedItemText).ToList();
+            var index = 0;
+            for (var i = 0; i < speeds.Count; i++)
+            {
+                if (speeds[i] != _loraSpeed)
+                    continue;
+                index = i;
+                break;
+            }
+
+            LoRaSpeedPicker.SelectedIndex = index;
+        }
+        finally
+        {
+            _loraPresetBind--;
+        }
+    }
+
+    private LoRaPresetRange RangeFromPicker()
+    {
+        var index = LoRaRangePicker.SelectedIndex;
+        return index >= 0 && index < LoRaRanges.Length ? LoRaRanges[index] : LoRaPresetRange.Long;
+    }
+
+    private LoRaPresetSpeed SpeedFromPicker()
+    {
+        var speeds = LoRaModemPresets.SpeedsFor(_loraRange);
+        var index = LoRaSpeedPicker.SelectedIndex;
+        return index >= 0 && index < speeds.Count ? speeds[index] : LoRaPresetSpeed.Fast;
+    }
+
+    private void UpdateLoRaPresetSummary()
+    {
+        var info = LoRaModemPresets.Find(_loraRange, _loraSpeed);
+        LoRaPresetSummary.Text = LocalizationUtils.GetStringByKeyWithFormat(
+            "lora.preset.summary",
+            RangeText(info.Range),
+            SpeedText(info.Speed),
+            info.KilobitsText);
+    }
+
+    private static string RangeText(LoRaPresetRange range) => range switch
+    {
+        LoRaPresetRange.Short => LocalizationUtils.GetStringByKey("lora.range.short"),
+        LoRaPresetRange.Medium => LocalizationUtils.GetStringByKey("lora.range.medium"),
+        _ => LocalizationUtils.GetStringByKey("lora.range.long")
+    };
+
+    private static string SpeedText(LoRaPresetSpeed speed) => speed switch
+    {
+        LoRaPresetSpeed.Slow => LocalizationUtils.GetStringByKey("lora.speed.slow"),
+        LoRaPresetSpeed.Moderate => LocalizationUtils.GetStringByKey("lora.speed.moderate"),
+        _ => LocalizationUtils.GetStringByKey("lora.speed.fast")
+    };
+
+    private string SpeedItemText(LoRaPresetSpeed speed)
+    {
+        var info = LoRaModemPresets.Find(_loraRange, speed);
+        return LocalizationUtils.GetStringByKeyWithFormat(
+            "lora.preset.speed_item", SpeedText(speed), info.KilobitsText);
+    }
+
     private async void OnLoRaSaveClicked(object? sender, EventArgs e)
     {
         var code = LoRaJurisdictionPicker.SelectedItem as string ?? JurisdictionCatalog.UnsetCode;
@@ -178,7 +295,8 @@ public partial class SettingsPage : ContentPage
             ComPort = LoRaComPortPicker.SelectedItem as string ?? DefaultLoRaComPort,
             BaudRate = DefaultLoRaBaudRate,
             JurisdictionCode = code,
-            TxPowerDbm = ReadLoRaTxPowerDbm()
+            TxPowerDbm = ReadLoRaTxPowerDbm(),
+            ModemPreset = LoRaModemPresets.Find(_loraRange, _loraSpeed).Name
         };
         try
         {
@@ -232,6 +350,9 @@ public partial class SettingsPage : ContentPage
         BlacklistButton.Text = LocalizationUtils.GetStringByKey("blacklist.title");
         AboutButton.Text = LocalizationUtils.GetStringByKey("settings.about");
         LogoutButton.Text = LocalizationUtils.GetStringByKey("settings.logout");
+        LoRaRangeLabel.Text = LocalizationUtils.GetStringByKey("lora.range");
+        LoRaSpeedLabel.Text = LocalizationUtils.GetStringByKey("lora.speed");
+        LoRaPresetPeers.Text = LocalizationUtils.GetStringByKey("lora.preset.peers");
         var warn = LanguageService.TranslationWarning(LanguageService.Current);
         LanguageWarningLabel.Text = warn;
         LanguageWarningLabel.IsVisible = LanguageService.ShowTranslationWarning;
