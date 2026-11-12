@@ -193,7 +193,8 @@ public static class MauiProgram
             sp.GetRequiredService<AuthService>(),
             sp.GetRequiredService<ChatRepository>(),
             sp.GetRequiredService<LoRaTransportSettingsStore>(),
-            sp.GetRequiredService<ILoggerFactory>()));
+            sp.GetRequiredService<ILoggerFactory>(),
+            FileSystem.AppDataDirectory));
         builder.Services.AddSingleton<IAdditionalTransportProvider>(sp =>
             sp.GetRequiredService<MeshtasticTransportHost>());
         builder.Services.AddSingleton(sp => new UserP2pRuntime(

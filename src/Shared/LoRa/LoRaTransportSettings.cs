@@ -23,6 +23,13 @@ public sealed class LoRaTransportSettings
     /// <summary>
     ///     Modem preset name (LONG_FAST and the other universal presets).
     ///     Both peers must use the same preset. Default LONG_FAST.
+    ///     Ignored while <see cref="UseBoardPresets"/> is true.
     /// </summary>
     public string ModemPreset { get; set; } = LoRaModemPresets.LongFastName;
+
+    /// <summary>
+    ///     When true, do not write modem/region/power to the board; follow the board LoRaConfig
+    ///     (including region duty-cycle percent and override_duty_cycle).
+    /// </summary>
+    public bool UseBoardPresets { get; set; }
 }

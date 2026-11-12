@@ -97,7 +97,8 @@ builder.Services.AddSingleton(sp => new MeshtasticTransportHost(
     sp.GetRequiredService<AuthService>(),
     sp.GetRequiredService<ChatRepository>(),
     sp.GetRequiredService<LoRaTransportSettingsStore>(),
-    sp.GetRequiredService<ILoggerFactory>()));
+    sp.GetRequiredService<ILoggerFactory>(),
+    WebAppPaths.AppRoot));
 builder.Services.AddSingleton<IAdditionalTransportProvider>(sp =>
     sp.GetRequiredService<MeshtasticTransportHost>());
 builder.Services.AddSingleton(sp => new UserP2pRuntime(

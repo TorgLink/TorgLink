@@ -30,12 +30,14 @@ public sealed class MeshtasticTransportHost : IAdditionalTransportProvider, IAsy
     private readonly ChatRepository _chats;
     private readonly LoRaTransportSettingsStore _store;
     private readonly ILogger _logger;
+    private readonly string _appDataRoot;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly object _transportSync = new();
 
     private MeshatasticTransport? _transport;
     private MeshatasticTransportOptions? _activeOptions;
     private LoRaTransportSettings _settings = new();
+    private LoRaBoardConfigInfo _liveBoardConfig = LoRaBoardConfigInfo.Parse([]);
     private readonly ConcurrentDictionary<string, LoRaDiscoveredPeerInfo> _discovered = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<uint, long> _lastPresenceReplyTicks = new();
     private Func<byte[], bool>? _isServerNetworkId;
@@ -61,18 +63,32 @@ public sealed class MeshtasticTransportHost : IAdditionalTransportProvider, IAsy
         AuthService auth,
         ChatRepository chats,
         LoRaTransportSettingsStore store,
-        ILoggerFactory? loggerFactory = null)
+        ILoggerFactory? loggerFactory = null,
+        string? appDataRoot = null)
     {
         _auth = auth ?? throw new ArgumentNullException(nameof(auth));
         _chats = chats ?? throw new ArgumentNullException(nameof(chats));
         _store = store ?? throw new ArgumentNullException(nameof(store));
         _logger = (loggerFactory ?? NullLoggerFactory.Instance).CreateLogger(nameof(MeshtasticTransportHost));
+        _appDataRoot = string.IsNullOrWhiteSpace(appDataRoot)
+            ? Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "TorgLink")
+            : appDataRoot.Trim();
+        System.IO.Directory.CreateDirectory(_appDataRoot);
+        LoRaBoardPresetFile.DirectoryFor(_appDataRoot);
     }
 
     /// <summary>Raised after MeshDirectory content changes (UI refresh).</summary>
     public event EventHandler? DirectoryChanged;
 
     public LoRaTransportSettings CurrentSettings => _settings;
+
+    /// <summary>Folder for <c>*.lora_preset</c> files.</summary>
+    public string BoardPresetDirectory => LoRaBoardPresetFile.DirectoryFor(_appDataRoot);
+
+    /// <summary>Last board LoRaConfig known to the host (live read or after restore).</summary>
+    public LoRaBoardConfigInfo LiveBoardConfig => _liveBoardConfig;
 
     public bool IsRunning
     {
@@ -136,11 +152,12 @@ public sealed class MeshtasticTransportHost : IAdditionalTransportProvider, IAsy
                     return;
             }
 
-            if (jurisdiction.IsUnset)
+            // Provisional duty budget from UI jurisdiction; when UseBoardPresets is on we
+            // reconfigure from the board region after StartAsync reads LoRaConfig.
+            if (!_settings.UseBoardPresets && jurisdiction.IsUnset)
                 _logger.LogInformation(
                     "LoRa jurisdiction is UNSET — TX limited to the default 10% duty cycle (REQ-RF-2)");
 
-            // REQ-RF-2: TX 10% / RX 90% of estimated airtime over a rolling hour, never above the region cap.
             var regionCap = jurisdiction.DutyCycleMaxPercent;
             var dutyPercent = Math.Min(
                 MeshtasticGate.DefaultDutyCyclePercent,
@@ -156,8 +173,8 @@ public sealed class MeshtasticTransportHost : IAdditionalTransportProvider, IAsy
                 BaudRate = _settings.BaudRate > 0 ? _settings.BaudRate : 115200,
                 Jurisdiction = jurisdiction,
                 TxPowerDbm = txPower,
-                // Both peers must use the same preset. StartAsync merges it into the full LoRaConfig.
                 ModemPreset = LoRaModemPresets.GetOrDefault(_settings.ModemPreset),
+                UseBoardPresets = _settings.UseBoardPresets,
                 // Tb=60s, Timeout = Tb*(1+0.015*Nrx) for control/short/medium;
                 // LargePayloadTimeout=180s for large text/binary chunk assemblies (≥1000 B).
                 Retry = RetryConfig.FromTxDutyPercent(dutyPercent),
@@ -179,6 +196,22 @@ public sealed class MeshtasticTransportHost : IAdditionalTransportProvider, IAsy
                 await transport.DisposeAsync().ConfigureAwait(false);
                 _logger.LogWarning(ex, "Failed to start Meshatastic transport on {ComPort}", options.ComPort);
                 throw;
+            }
+
+            // Auto-save the pre-write board blob once per COM port so restore still works
+            // after we apply an app modem preset.
+            await TryAutoSaveInitialBoardPresetAsync(transport, cancellationToken).ConfigureAwait(false);
+            _liveBoardConfig = transport.LastBoardConfig;
+
+            if (_settings.UseBoardPresets && !transport.LastBoardConfig.IsEmpty)
+            {
+                dutyPercent = transport.LastBoardConfig.EffectiveDutyCyclePercent;
+                await MeshtasticGate.Instance.ConfigureDutyCycleAsync(dutyPercent,
+                    DutyCycleBudget.DefaultAirtimePerByteMs, cancellationToken).ConfigureAwait(false);
+                _logger.LogInformation(
+                    "UseBoardPresets: duty cycle set from board region {Region} to {Duty}% (overrideDuty={Override})",
+                    transport.LastBoardConfig.RegionCode, dutyPercent,
+                    transport.LastBoardConfig.OverrideDutyCycle);
             }
 
             lock (_transportSync)
@@ -535,11 +568,19 @@ public sealed class MeshtasticTransportHost : IAdditionalTransportProvider, IAsy
         if (active == null)
             return false;
         var baud = settings.BaudRate > 0 ? settings.BaudRate : 115200;
+        if (active.UseBoardPresets != settings.UseBoardPresets)
+            return false;
+        if (!string.Equals(active.ComPort.Trim(), settings.ComPort.Trim(), StringComparison.OrdinalIgnoreCase)
+            || active.BaudRate != baud)
+            return false;
+
+        // While following the board, UI jurisdiction / power / modem changes must not restart the radio.
+        if (settings.UseBoardPresets)
+            return true;
+
         var jurisdiction = JurisdictionCatalog.Find(settings.JurisdictionCode) ?? JurisdictionCatalog.Unset;
         var txPower = LoRaTxPower.EffectiveForBoard(settings.TxPowerDbm, jurisdiction);
-        return string.Equals(active.ComPort.Trim(), settings.ComPort.Trim(), StringComparison.OrdinalIgnoreCase)
-               && active.BaudRate == baud
-               && string.Equals(
+        return string.Equals(
                    active.Jurisdiction?.Code,
                    jurisdiction.Code,
                    StringComparison.OrdinalIgnoreCase)
@@ -548,6 +589,113 @@ public sealed class MeshtasticTransportHost : IAdditionalTransportProvider, IAsy
                    active.ModemPreset.Name,
                    LoRaModemPresets.GetOrDefault(settings.ModemPreset).Name,
                    StringComparison.Ordinal);
+    }
+
+    /// <summary>Save board preset and return the file path plus summary.</summary>
+    public async Task<(string Path, string Summary)> SaveBoardPresetFileAsync(
+        CancellationToken cancellationToken = default)
+    {
+        MeshatasticTransport? transport;
+        lock (_transportSync)
+            transport = _transport;
+        if (transport == null || !IsRunning)
+            throw new InvalidOperationException("LoRa radio is not connected.");
+
+        var info = await transport.ReadBoardLoRaConfigAsync(cancellationToken).ConfigureAwait(false);
+        if (info.IsEmpty)
+            throw new InvalidOperationException("Board did not return a LoRaConfig.");
+
+        _liveBoardConfig = info;
+        var data = LoRaBoardPresetFile.FromBoard(info, transport.BoardDisplayName, _settings.ComPort);
+        var path = LoRaBoardPresetFile.Write(_appDataRoot, data);
+        _logger.LogInformation("Saved board LoRa preset to {Path}", path);
+        return (path, LoRaBoardPresetFile.FormatSummary(data));
+    }
+
+    /// <summary>
+    ///     Load a <c>.lora_preset</c> file, write the blob to the board, enable UseBoardPresets,
+    ///     and reconfigure the software duty cycle from the restored region.
+    /// </summary>
+    public async Task RestoreBoardPresetFromFileAsync(string filePath,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
+        var data = LoRaBoardPresetFile.Read(filePath);
+        if (!data.HasConfig)
+            throw new InvalidDataException("Preset file has an empty LoRaConfig.");
+
+        MeshatasticTransport? transport;
+        lock (_transportSync)
+            transport = _transport;
+        if (transport == null || !IsRunning)
+            throw new InvalidOperationException("LoRa radio is not connected.");
+
+        var ok = await transport.RestoreBoardLoRaConfigAsync(data.LoraConfigBytes, cancellationToken)
+            .ConfigureAwait(false);
+        if (!ok)
+            throw new InvalidOperationException("Board rejected or did not apply the saved LoRaConfig.");
+
+        _liveBoardConfig = transport.LastBoardConfig.IsEmpty
+            ? data.ToBoardInfo()
+            : transport.LastBoardConfig;
+
+        _settings.UseBoardPresets = true;
+        await _store.SaveAsync(_settings).ConfigureAwait(false);
+
+        var duty = _liveBoardConfig.EffectiveDutyCyclePercent;
+        await MeshtasticGate.Instance.ConfigureDutyCycleAsync(duty,
+            DutyCycleBudget.DefaultAirtimePerByteMs, cancellationToken).ConfigureAwait(false);
+
+        lock (_transportSync)
+        {
+            if (_activeOptions != null)
+                _activeOptions = _activeOptions with { UseBoardPresets = true };
+        }
+
+        _logger.LogInformation(
+            "Restored board LoRa preset from {Path}: {Summary}; UseBoardPresets=true, duty={Duty}%",
+            filePath, LoRaBoardPresetFile.FormatSummary(data), duty);
+        DirectoryChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public string? DescribeLiveBoardConfig()
+    {
+        if (_liveBoardConfig.IsEmpty)
+            return null;
+        var kb = LoRaModemPresets.All
+            .FirstOrDefault(p => p.ProtoValue == _liveBoardConfig.ModemPresetProto)?.KilobitsText;
+        var speed = string.IsNullOrEmpty(kb) ? "" : $", {kb} kbit/s";
+        return
+            $"{_liveBoardConfig.ModemPresetName}, {_liveBoardConfig.RegionCode}, " +
+            $"{_liveBoardConfig.TxPowerDbm} dBm, duty {_liveBoardConfig.DutyCycleMaxPercent:0.###}%" +
+            (_liveBoardConfig.OverrideDutyCycle ? " (override)" : "") +
+            speed;
+    }
+
+    private async Task TryAutoSaveInitialBoardPresetAsync(MeshatasticTransport transport,
+        CancellationToken cancellationToken)
+    {
+        var initial = transport.InitialBoardConfig;
+        if (initial.IsEmpty)
+            return;
+        if (await _store.HasAutoSnapshotForPortAsync(_settings.ComPort).ConfigureAwait(false))
+            return;
+
+        try
+        {
+            var data = LoRaBoardPresetFile.FromBoard(initial, transport.BoardDisplayName, _settings.ComPort);
+            var path = LoRaBoardPresetFile.Write(_appDataRoot, data);
+            await _store.RememberAutoSnapshotPathAsync(_settings.ComPort, path).ConfigureAwait(false);
+            _logger.LogInformation(
+                "Auto-saved first board LoRaConfig for {Port} to {Path} (before any app modem write)",
+                _settings.ComPort, path);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex, "Auto-save of first board LoRaConfig failed for {Port}", _settings.ComPort);
+        }
+
+        _ = cancellationToken;
     }
 
     private void OnPresenceReceived(uint fromNode, uint toNode, byte[] payload)

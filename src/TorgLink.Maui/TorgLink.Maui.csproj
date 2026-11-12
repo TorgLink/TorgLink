@@ -133,6 +133,7 @@
         <Compile Include="..\Shared\BotHostClaims.cs" Link="Services\BotHostClaims.cs" />
         <Compile Include="..\Shared\LoRa\LoRaTransportSettings.cs" Link="LoRa\LoRaTransportSettings.cs" />
         <Compile Include="..\Shared\LoRa\LoRaTransportSettingsStore.cs" Link="LoRa\LoRaTransportSettingsStore.cs" />
+        <Compile Include="..\Shared\LoRa\LoRaBoardPresetFile.cs" Link="LoRa\LoRaBoardPresetFile.cs" />
         <Compile Include="..\Shared\LoRa\LoRaMeshPeerInfo.cs" Link="LoRa\LoRaMeshPeerInfo.cs" />
         <Compile Include="..\Shared\LoRa\MeshtasticTransportHost.cs" Link="LoRa\MeshtasticTransportHost.cs" />
         <Compile Include="..\Shared\LoRa\LoRaBootstrap.cs" Link="LoRa\LoRaBootstrap.cs" />

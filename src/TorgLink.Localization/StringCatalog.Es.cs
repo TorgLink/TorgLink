@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
 namespace TorgLink.Localization;
@@ -133,6 +133,11 @@ public static partial class StringCatalog
         ["lora.preset.speed_item"] = "{0} — {1} kbit/s",
         ["lora.preset.summary"] = "{0}, {1} — {2} kbit/s",
         ["lora.preset.peers"] = "Ambos equipos deben usar el mismo modo; si no, no se oyen.",
+        ["lora.board.use"] = "Usar preajustes de la placa",
+        ["lora.board.save"] = "Guardar preajuste de la placa",
+        ["lora.board.load"] = "Cargar desde preajuste",
+        ["lora.board.wait"] = "Los valores de la placa aparecen tras conectar.",
+        ["lora.board.restored"] = "Preajuste de la placa restaurado.",
         ["settings.udp"] = "UDP (puerto local)",
         ["settings.lan"] = "Escaneo LAN",
         ["settings.routing"] = "Enrutamiento P2P",

@@ -232,6 +232,29 @@ export function SettingsPage() {
       paintPresetRange();
       paintPresetSpeed();
       const enabled = el("input", { type: "checkbox", checked: !!lora.enabled });
+      const useBoard = el("input", { type: "checkbox", checked: !!lora.useBoardPresets });
+      const boardSummary = el(
+        "div",
+        { class: "muted", style: { marginTop: "6px" } },
+        lora.boardConfigSummary || t("lora.board.wait")
+      );
+      const presetFileInfo = el("div", { class: "muted", style: { marginTop: "6px" } }, "");
+      const fileInput = el("input", {
+        type: "file",
+        accept: ".lora_preset,text/plain",
+        style: { display: "none" }
+      });
+      const applyBoardUi = () => {
+        const on = !!useBoard.checked;
+        jur.disabled = on;
+        power.disabled = on;
+        rangeSel.disabled = on;
+        speedSel.disabled = on;
+        presetSummary.style.display = on ? "none" : "";
+        boardSummary.style.display = on ? "" : "none";
+      };
+      useBoard.addEventListener("change", applyBoardUi);
+      applyBoardUi();
       const status = el(
         "div",
         { class: "muted", style: { marginTop: "8px" } },
@@ -246,6 +269,8 @@ export function SettingsPage() {
           el("div", { class: "muted" }, "LoRa / Meshtastic"),
           el("div", { class: "switch" }, el("span", null, "Enable"), enabled),
           el("label", null, "COM port", com),
+          el("div", { class: "switch" }, el("span", null, t("lora.board.use")), useBoard),
+          boardSummary,
           el("label", null, "Jurisdiction", jur),
           el("label", null, "TX power", power),
           el("label", null, t("lora.range"), rangeSel),
@@ -253,6 +278,39 @@ export function SettingsPage() {
           presetSummary,
           el("div", { class: "muted" }, t("lora.preset.peers")),
           status,
+          el(
+            "div",
+            { style: { display: "flex", gap: "8px", marginTop: "10px", flexWrap: "wrap" } },
+            el(
+              "button",
+              {
+                class: "btn",
+                disabled: !lora.running,
+                onclick: async () => {
+                  try {
+                    const r = await post("/api/lora/board-snapshot", {});
+                    presetFileInfo.textContent = r?.summary
+                      ? `${r.summary}\n${r.path || ""}`
+                      : "";
+                  } catch (err) {
+                    presetFileInfo.textContent = err?.message || String(err);
+                  }
+                }
+              },
+              t("lora.board.save")
+            ),
+            el(
+              "button",
+              {
+                class: "btn",
+                disabled: !lora.running,
+                onclick: () => fileInput.click()
+              },
+              t("lora.board.load")
+            ),
+            fileInput
+          ),
+          presetFileInfo,
           el(
             "button",
             {
@@ -265,7 +323,8 @@ export function SettingsPage() {
                   baudRate: lora.baudRate || 115200,
                   jurisdictionCode: jur.value,
                   txPowerDbm: Number(power.value) || 22,
-                  modemPreset: currentPreset()?.name || "LONG_FAST"
+                  modemPreset: currentPreset()?.name || "LONG_FAST",
+                  useBoardPresets: !!useBoard.checked
                 });
                 await load();
               }
@@ -274,6 +333,21 @@ export function SettingsPage() {
           )
         )
       );
+      fileInput.addEventListener("change", async () => {
+        const file = fileInput.files && fileInput.files[0];
+        if (!file) return;
+        try {
+          const content = await file.text();
+          const r = await post("/api/lora/board-snapshot/restore", { content });
+          useBoard.checked = true;
+          applyBoardUi();
+          boardSummary.textContent = r?.boardConfigSummary || t("lora.board.restored");
+          presetFileInfo.textContent = t("lora.board.restored");
+          await load();
+        } catch (err) {
+          presetFileInfo.textContent = err?.message || String(err);
+        }
+      });
     } catch {
       // LoRa API optional if host failed to start
     }

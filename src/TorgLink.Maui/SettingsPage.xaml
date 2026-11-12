@@ -76,6 +76,17 @@
                 <Picker x:Name="LoRaComPortPicker" Title="COM port"
                         BackgroundColor="{DynamicResource PageBackground}"
                         TextColor="{DynamicResource MidnightBlue}" />
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                    <Label x:Name="LoRaUseBoardPresetsLabel" FontSize="14"
+                           TextColor="{DynamicResource MidnightBlue}"
+                           VerticalOptions="Center"
+                           Text="Use board presets" />
+                    <Switch x:Name="LoRaUseBoardPresetsSwitch" Grid.Column="1"
+                            OnColor="{DynamicResource Accent}"
+                            Toggled="OnLoRaUseBoardPresetsToggled" />
+                </Grid>
+                <Label x:Name="LoRaBoardConfigLabel" FontSize="12"
+                       TextColor="{DynamicResource MidnightBlue}" LineBreakMode="WordWrap" />
                 <Picker x:Name="LoRaJurisdictionPicker" Title="Jurisdiction"
                         BackgroundColor="{DynamicResource PageBackground}"
                         TextColor="{DynamicResource MidnightBlue}"
@@ -96,6 +107,16 @@
                 <Label x:Name="LoRaPresetSummary" FontSize="12" TextColor="{DynamicResource MidnightBlue}"
                        LineBreakMode="WordWrap" />
                 <Label x:Name="LoRaPresetPeers" FontSize="12" TextColor="{DynamicResource MutedText}"
+                       LineBreakMode="WordWrap" />
+                <HorizontalStackLayout Spacing="8">
+                    <Button x:Name="LoRaSavePresetButton" Text="Save board preset"
+                            Clicked="OnLoRaSavePresetClicked"
+                            BackgroundColor="{DynamicResource Accent}" TextColor="{DynamicResource ButtonText}" />
+                    <Button x:Name="LoRaLoadPresetButton" Text="Load from preset"
+                            Clicked="OnLoRaLoadPresetClicked"
+                            BackgroundColor="{DynamicResource Accent}" TextColor="{DynamicResource ButtonText}" />
+                </HorizontalStackLayout>
+                <Label x:Name="LoRaPresetFileLabel" FontSize="12" TextColor="{DynamicResource MutedText}"
                        LineBreakMode="WordWrap" />
                 <Label x:Name="LoRaStatusLabel" FontSize="12" TextColor="{DynamicResource MutedText}" />
                 <Button x:Name="LoRaSaveButton" Text="Apply LoRa" Clicked="OnLoRaSaveClicked"

@@ -75,6 +75,8 @@ internal static class AppEndpoints
         api.MapGet("/lora", GetLoRaSettings);
         api.MapGet("/lora/ports", ListLoRaPorts);
         api.MapPost("/lora", SaveLoRaSettings);
+        api.MapPost("/lora/board-snapshot", SaveLoRaBoardSnapshot);
+        api.MapPost("/lora/board-snapshot/restore", RestoreLoRaBoardSnapshot);
         api.MapGet("/lora/peers", ListLoRaPeers);
         api.MapGet("/lora/jurisdictions", ListLoRaJurisdictions);
         api.MapGet("/routing", GetRouting);
@@ -1116,6 +1118,7 @@ internal static class AppEndpoints
         if (NeedUser(auth) is { } deny)
             return deny;
         var s = await lora.LoadSettingsAsync().ConfigureAwait(false);
+        var live = lora.DescribeLiveBoardConfig();
         return Results.Json(new
         {
             s.Enabled,
@@ -1123,6 +1126,7 @@ internal static class AppEndpoints
             s.BaudRate,
             s.JurisdictionCode,
             s.TxPowerDbm,
+            s.UseBoardPresets,
             txPowerChoices = ShortP2P.LoRa.Jurisdiction.LoRaTxPower.UiChoices,
             modemPreset = ShortP2P.LoRa.LoRaModemPresets.NormalizeName(s.ModemPreset),
             modemPresets = ShortP2P.LoRa.LoRaModemPresets.All.Select(p => new
@@ -1132,9 +1136,56 @@ internal static class AppEndpoints
                 speed = p.Speed.ToString(),
                 p.KilobitsText
             }),
+            boardConfigSummary = live,
+            boardPresetDirectory = lora.BoardPresetDirectory,
             running = lora.IsRunning,
             maxBinaryBytes = MeshtasticTransportHost.MaxBinaryBytes
         });
+    }
+
+    private static async Task<IResult> SaveLoRaBoardSnapshot(AuthService auth, MeshtasticTransportHost lora)
+    {
+        if (NeedUser(auth) is { } deny)
+            return deny;
+        try
+        {
+            var (path, summary) = await lora.SaveBoardPresetFileAsync().ConfigureAwait(false);
+            return Results.Json(new { ok = true, path, summary });
+        }
+        catch (Exception ex)
+        {
+            return Results.BadRequest(new { error = ex.Message });
+        }
+    }
+
+    private static async Task<IResult> RestoreLoRaBoardSnapshot(LoRaPresetPathBody body, AuthService auth,
+        MeshtasticTransportHost lora)
+    {
+        if (NeedUser(auth) is { } deny)
+            return deny;
+        try
+        {
+            var path = body.Path?.Trim() ?? "";
+            if (path.Length == 0 && !string.IsNullOrWhiteSpace(body.Content))
+            {
+                // Web file-open dialog: upload content, write a temp .lora_preset, then restore.
+                var dir = lora.BoardPresetDirectory;
+                path = Path.Combine(dir, $"upload_{DateTime.UtcNow:yyyyMMdd_HHmmss}.lora_preset");
+                await File.WriteAllTextAsync(path, body.Content).ConfigureAwait(false);
+            }
+
+            await lora.RestoreBoardPresetFromFileAsync(path).ConfigureAwait(false);
+            return Results.Json(new
+            {
+                ok = true,
+                useBoardPresets = true,
+                boardConfigSummary = lora.DescribeLiveBoardConfig()
+            });
+        }
+        catch (Exception ex)
+        {
+            return Results.BadRequest(new { error = ex.Message });
+        }
     }
 
     private static async Task<IResult> SaveLoRaSettings(LoRaBody body, AuthService auth, UserP2pRuntime p2p,
@@ -1151,7 +1202,8 @@ internal static class AppEndpoints
                 ? "UNSET"
                 : body.JurisdictionCode.Trim(),
             TxPowerDbm = body.TxPowerDbm,
-            ModemPreset = ShortP2P.LoRa.LoRaModemPresets.NormalizeName(body.ModemPreset)
+            ModemPreset = ShortP2P.LoRa.LoRaModemPresets.NormalizeName(body.ModemPreset),
+            UseBoardPresets = body.UseBoardPresets
         };
         await lora.SaveSettingsAsync(settings).ConfigureAwait(false);
         var user = auth.CurrentUser;
@@ -1393,7 +1445,9 @@ internal static class AppEndpoints
         int BaudRate,
         string? JurisdictionCode,
         int TxPowerDbm,
-        string? ModemPreset = null);
+        string? ModemPreset = null,
+        bool UseBoardPresets = false);
+    private sealed record LoRaPresetPathBody(string? Path = null, string? Content = null);
     private sealed record RoutingBody(
         int MaxSearchHops,
         int SendFailureSearchAttempts,

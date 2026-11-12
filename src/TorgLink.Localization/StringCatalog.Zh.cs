@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
 namespace TorgLink.Localization;
@@ -133,6 +133,11 @@ public static partial class StringCatalog
         ["lora.preset.speed_item"] = "{0} — {1} kbit/s",
         ["lora.preset.summary"] = "{0}, {1} — {2} kbit/s",
         ["lora.preset.peers"] = "双方必须使用相同的模式，否则无法互相收到。",
+        ["lora.board.use"] = "使用板卡预设",
+        ["lora.board.save"] = "保存板卡预设",
+        ["lora.board.load"] = "从预设加载",
+        ["lora.board.wait"] = "连接电台后显示板卡参数。",
+        ["lora.board.restored"] = "板卡预设已恢复。",
         ["settings.udp"] = "UDP（本地端口）",
         ["settings.lan"] = "局域网扫描",
         ["settings.routing"] = "P2P 路由",

@@ -134,12 +134,14 @@ public partial class SettingsPage : ContentPage
         LoRaJurisdictionPicker.SelectedIndex = idx >= 0 ? idx : 0;
         LoRaTxPowerPicker.ItemsSource = LoRaTxPower.UiChoices.Select(d => $"{d} dBm").ToList();
         SelectLoRaTxPower(s.TxPowerDbm);
+        LoRaUseBoardPresetsSwitch.IsToggled = s.UseBoardPresets;
         var preset = LoRaModemPresets.GetOrDefault(s.ModemPreset);
         _loraRange = preset.Range;
         _loraSpeed = preset.Speed;
         BindLoRaRangePicker();
         BindLoRaSpeedPicker();
         UpdateLoRaPresetSummary();
+        ApplyLoRaBoardPresetUiState();
         _suppressToggle = false;
         LoRaStatusLabel.Text = _lora.IsRunning
             ? "LoRa transport: running"
@@ -151,6 +153,97 @@ public partial class SettingsPage : ContentPage
     private void OnLoRaToggled(object? sender, ToggledEventArgs e)
     {
         // Applied on Save.
+    }
+
+    private void OnLoRaUseBoardPresetsToggled(object? sender, ToggledEventArgs e)
+    {
+        if (_suppressToggle)
+            return;
+        ApplyLoRaBoardPresetUiState();
+    }
+
+    private void ApplyLoRaBoardPresetUiState()
+    {
+        var useBoard = LoRaUseBoardPresetsSwitch.IsToggled;
+        LoRaJurisdictionPicker.IsEnabled = !useBoard;
+        LoRaTxPowerPicker.IsEnabled = !useBoard;
+        LoRaRangePicker.IsEnabled = !useBoard;
+        LoRaSpeedPicker.IsEnabled = !useBoard;
+        LoRaPresetSummary.IsVisible = !useBoard;
+        LoRaPresetPeers.IsVisible = !useBoard;
+        LoRaSavePresetButton.IsEnabled = _lora.IsRunning;
+        LoRaLoadPresetButton.IsEnabled = _lora.IsRunning;
+        if (useBoard)
+        {
+            var live = _lora.DescribeLiveBoardConfig();
+            LoRaBoardConfigLabel.Text = string.IsNullOrWhiteSpace(live)
+                ? LocalizationUtils.GetStringByKey("lora.board.wait")
+                : live;
+        }
+        else
+        {
+            LoRaBoardConfigLabel.Text = "";
+        }
+    }
+
+    private async void OnLoRaSavePresetClicked(object? sender, EventArgs e)
+    {
+        try
+        {
+            var (path, summary) = await _lora.SaveBoardPresetFileAsync().ConfigureAwait(true);
+            LoRaPresetFileLabel.Text = summary + "\n" + path;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Save board LoRa preset failed");
+            LoRaStatusLabel.Text = ex.Message;
+        }
+    }
+
+    private async void OnLoRaLoadPresetClicked(object? sender, EventArgs e)
+    {
+        try
+        {
+            var result = await FilePicker.Default.PickAsync(new PickOptions
+            {
+                PickerTitle = LocalizationUtils.GetStringByKey("lora.board.load"),
+                FileTypes = new FilePickerFileType(new Dictionary<DevicePlatform, IEnumerable<string>>
+                {
+                    { DevicePlatform.WinUI, new[] { ".lora_preset" } },
+                    { DevicePlatform.Android, new[] { "application/octet-stream", "text/plain" } },
+                    { DevicePlatform.iOS, new[] { "public.data", "public.plain-text" } },
+                    { DevicePlatform.MacCatalyst, new[] { "public.data", "public.plain-text" } }
+                })
+            }).ConfigureAwait(true);
+            if (result == null)
+                return;
+
+            var path = result.FullPath;
+            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+            {
+                // Some platforms only give a stream — copy into the presets folder first.
+                await using var stream = await result.OpenReadAsync().ConfigureAwait(true);
+                path = System.IO.Path.Combine(_lora.BoardPresetDirectory,
+                    string.IsNullOrWhiteSpace(result.FileName)
+                        ? $"import_{DateTime.UtcNow:yyyyMMdd_HHmmss}.lora_preset"
+                        : result.FileName);
+                await using var file = File.Create(path);
+                await stream.CopyToAsync(file).ConfigureAwait(true);
+            }
+
+            await _lora.RestoreBoardPresetFromFileAsync(path).ConfigureAwait(true);
+            _suppressToggle = true;
+            LoRaUseBoardPresetsSwitch.IsToggled = true;
+            _suppressToggle = false;
+            ApplyLoRaBoardPresetUiState();
+            LoRaPresetFileLabel.Text = LocalizationUtils.GetStringByKey("lora.board.restored") + "\n" + path;
+            LoRaStatusLabel.Text = _lora.IsRunning ? "LoRa transport: running" : LoRaStatusLabel.Text;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Load board LoRa preset failed");
+            LoRaStatusLabel.Text = ex.Message;
+        }
     }
 
     private void OnLoRaJurisdictionChanged(object? sender, EventArgs e)
@@ -296,7 +389,8 @@ public partial class SettingsPage : ContentPage
             BaudRate = DefaultLoRaBaudRate,
             JurisdictionCode = code,
             TxPowerDbm = ReadLoRaTxPowerDbm(),
-            ModemPreset = LoRaModemPresets.Find(_loraRange, _loraSpeed).Name
+            ModemPreset = LoRaModemPresets.Find(_loraRange, _loraSpeed).Name,
+            UseBoardPresets = LoRaUseBoardPresetsSwitch.IsToggled
         };
         try
         {
@@ -353,6 +447,10 @@ public partial class SettingsPage : ContentPage
         LoRaRangeLabel.Text = LocalizationUtils.GetStringByKey("lora.range");
         LoRaSpeedLabel.Text = LocalizationUtils.GetStringByKey("lora.speed");
         LoRaPresetPeers.Text = LocalizationUtils.GetStringByKey("lora.preset.peers");
+        LoRaUseBoardPresetsLabel.Text = LocalizationUtils.GetStringByKey("lora.board.use");
+        LoRaSavePresetButton.Text = LocalizationUtils.GetStringByKey("lora.board.save");
+        LoRaLoadPresetButton.Text = LocalizationUtils.GetStringByKey("lora.board.load");
+        ApplyLoRaBoardPresetUiState();
         var warn = LanguageService.TranslationWarning(LanguageService.Current);
         LanguageWarningLabel.Text = warn;
         LanguageWarningLabel.IsVisible = LanguageService.ShowTranslationWarning;

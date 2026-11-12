@@ -13,6 +13,8 @@ public sealed class LoRaTransportSettingsStore(ISessionStorage storage)
     private const string KJurisdiction = "lora_jurisdiction";
     private const string KTxPowerDbm = "lora_tx_power_dbm";
     private const string KModemPreset = "lora_modem_preset";
+    private const string KUseBoardPresets = "lora_use_board_presets";
+    private const string KAutoSnapshotPortPrefix = "lora_board_autosnapshot_port:";
 
     private readonly ISessionStorage _storage = storage ?? throw new ArgumentNullException(nameof(storage));
 
@@ -34,6 +36,8 @@ public sealed class LoRaTransportSettingsStore(ISessionStorage storage)
             s.TxPowerDbm = LoRaTxPower.DefaultForJurisdiction(profile);
         s.ModemPreset = LoRaModemPresets.NormalizeName(
             await _storage.GetAsync(KModemPreset).ConfigureAwait(false));
+        if (bool.TryParse(await _storage.GetAsync(KUseBoardPresets).ConfigureAwait(false), out var useBoard))
+            s.UseBoardPresets = useBoard;
         return s;
     }
 
@@ -50,5 +54,42 @@ public sealed class LoRaTransportSettingsStore(ISessionStorage storage)
             .ConfigureAwait(false);
         await _storage.SetAsync(KModemPreset, LoRaModemPresets.NormalizeName(settings.ModemPreset))
             .ConfigureAwait(false);
+        await _storage.SetAsync(KUseBoardPresets, settings.UseBoardPresets.ToString())
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>True when this COM port already has an auto-saved board snapshot file.</summary>
+    public async Task<bool> HasAutoSnapshotForPortAsync(string? comPort)
+    {
+        var key = AutoSnapshotKey(comPort);
+        if (key == null)
+            return false;
+        var path = await _storage.GetAsync(key).ConfigureAwait(false);
+        return !string.IsNullOrWhiteSpace(path) && File.Exists(path);
+    }
+
+    public async Task RememberAutoSnapshotPathAsync(string? comPort, string filePath)
+    {
+        var key = AutoSnapshotKey(comPort);
+        if (key == null || string.IsNullOrWhiteSpace(filePath))
+            return;
+        await _storage.SetAsync(key, filePath).ConfigureAwait(false);
+    }
+
+    public async Task<string?> GetAutoSnapshotPathAsync(string? comPort)
+    {
+        var key = AutoSnapshotKey(comPort);
+        if (key == null)
+            return null;
+        var path = await _storage.GetAsync(key).ConfigureAwait(false);
+        return string.IsNullOrWhiteSpace(path) ? null : path;
+    }
+
+    private static string? AutoSnapshotKey(string? comPort)
+    {
+        var port = comPort?.Trim();
+        if (string.IsNullOrWhiteSpace(port))
+            return null;
+        return KAutoSnapshotPortPrefix + port.ToUpperInvariant();
     }
 }

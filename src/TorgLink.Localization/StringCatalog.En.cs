@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
 namespace TorgLink.Localization;
@@ -134,6 +134,11 @@ public static partial class StringCatalog
         ["lora.preset.speed_item"] = "{0} — {1} kbit/s",
         ["lora.preset.summary"] = "{0}, {1} — {2} kbit/s",
         ["lora.preset.peers"] = "Both peers must use the same mode, or they will not hear each other.",
+        ["lora.board.use"] = "Use board presets",
+        ["lora.board.save"] = "Save board preset",
+        ["lora.board.load"] = "Load from preset",
+        ["lora.board.wait"] = "Board values appear after the radio connects.",
+        ["lora.board.restored"] = "Board preset restored.",
         ["settings.udp"] = "UDP (local port)",
         ["settings.lan"] = "LAN scanning",
         ["settings.routing"] = "P2P routing",

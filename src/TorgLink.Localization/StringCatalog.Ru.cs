@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
 namespace TorgLink.Localization;
@@ -134,6 +134,11 @@ public static partial class StringCatalog
         ["lora.preset.speed_item"] = "{0} — {1} кбит/с",
         ["lora.preset.summary"] = "{0}, {1} — {2} кбит/с",
         ["lora.preset.peers"] = "Оба абонента должны использовать один и тот же режим, иначе они не услышат друг друга.",
+        ["lora.board.use"] = "Использовать предустановки платы",
+        ["lora.board.save"] = "Сохранить пресет платы",
+        ["lora.board.load"] = "Загрузить из пресета",
+        ["lora.board.wait"] = "Значения платы появятся после подключения.",
+        ["lora.board.restored"] = "Пресет платы восстановлен.",
         ["settings.udp"] = "UDP (локальный порт)",
         ["settings.lan"] = "LAN-сканирование",
         ["settings.routing"] = "P2P-маршрутизация",
