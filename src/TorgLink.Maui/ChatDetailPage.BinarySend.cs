@@ -75,14 +75,8 @@ public partial class ChatDetailPage
         if (user == null || chat == null || EnsureP2pSessionAttached(user, chat) == null)
             return;
         ClearDeliveryIssue();
-        if (_p2pSession?.IsMeshtasticPathActive == true)
-        {
-            await UiAlertAsync(
-                    LocalizationUtils.GetStringByKey("chat.file"),
-                    LocalizationUtils.GetStringByKey("chat.binary_meshtastic_forbidden"))
-                .ConfigureAwait(true);
+        if (await BlockBinaryOnMeshtasticAsync(_p2pSession, "image", "chat.file").ConfigureAwait(true))
             return;
-        }
 
         await SyncTrafficQualityAsync().ConfigureAwait(true);
 
@@ -149,14 +143,8 @@ public partial class ChatDetailPage
         if (user == null || chat == null || EnsureP2pSessionAttached(user, chat) == null)
             return;
         ClearDeliveryIssue();
-        if (_p2pSession?.IsMeshtasticPathActive == true)
-        {
-            await UiAlertAsync(
-                    LocalizationUtils.GetStringByKey("chat.file"),
-                    LocalizationUtils.GetStringByKey("chat.binary_meshtastic_forbidden"))
-                .ConfigureAwait(true);
+        if (await BlockBinaryOnMeshtasticAsync(_p2pSession, "file", "chat.file").ConfigureAwait(true))
             return;
-        }
 
         await SyncTrafficQualityAsync().ConfigureAwait(true);
 
@@ -198,14 +186,9 @@ public partial class ChatDetailPage
 
         var sendName = pick.FileName;
         var isVideo = Video144pTranscoder.IsVideoMime(mime);
-        if (session.IsMeshtasticPathActive)
-        {
-            await UiAlertAsync(
-                    LocalizationUtils.GetStringByKey("chat.file"),
-                    LocalizationUtils.GetStringByKey("chat.binary_meshtastic_forbidden"))
-                .ConfigureAwait(false);
+        if (await BlockBinaryOnMeshtasticAsync(session, isVideo ? "video" : "file", "chat.file")
+                .ConfigureAwait(false))
             return;
-        }
 
         if (!isVideo)
         {
@@ -235,14 +218,8 @@ public partial class ChatDetailPage
         if (user == null || chat == null || EnsureP2pSessionAttached(user, chat) == null)
             return;
         ClearDeliveryIssue();
-        if (_p2pSession?.IsMeshtasticPathActive == true)
-        {
-            await UiAlertAsync(
-                    LocalizationUtils.GetStringByKey("chat.camera"),
-                    LocalizationUtils.GetStringByKey("chat.binary_meshtastic_forbidden"))
-                .ConfigureAwait(true);
+        if (await BlockBinaryOnMeshtasticAsync(_p2pSession, "camera media", "chat.camera").ConfigureAwait(true))
             return;
-        }
 
         var photoLabel = LocalizationUtils.GetStringByKey("preview.photo");
         var videoLabel = LocalizationUtils.GetStringByKey("chat.video");
@@ -255,14 +232,8 @@ public partial class ChatDetailPage
             await CaptureAndQueueCameraPhotoAsync().ConfigureAwait(true);
         else if (choice == videoLabel)
         {
-            if (_p2pSession?.IsMeshtasticPathActive == true)
-            {
-                await UiAlertAsync(
-                        LocalizationUtils.GetStringByKey("chat.video"),
-                        LocalizationUtils.GetStringByKey("chat.binary_meshtastic_forbidden"))
-                    .ConfigureAwait(true);
+            if (await BlockBinaryOnMeshtasticAsync(_p2pSession, "video", "chat.video").ConfigureAwait(true))
                 return;
-            }
 
             await CaptureAndQueueCameraVideoAsync().ConfigureAwait(true);
         }
@@ -272,14 +243,8 @@ public partial class ChatDetailPage
     {
         try
         {
-            if (_p2pSession?.IsMeshtasticPathActive == true)
-            {
-                await UiAlertAsync(
-                        LocalizationUtils.GetStringByKey("chat.camera"),
-                        LocalizationUtils.GetStringByKey("chat.binary_meshtastic_forbidden"))
-                    .ConfigureAwait(true);
+            if (await BlockBinaryOnMeshtasticAsync(_p2pSession, "image", "chat.camera").ConfigureAwait(true))
                 return;
-            }
 
             if (!MediaPicker.Default.IsCaptureSupported)
             {
@@ -433,14 +398,8 @@ public partial class ChatDetailPage
 
     private async Task SendCameraVideoAsync(ChatP2PSession session, FileResult video, CancellationToken ct)
     {
-        if (session.IsMeshtasticPathActive)
-        {
-            await UiAlertAsync(
-                    LocalizationUtils.GetStringByKey("chat.video"),
-                    LocalizationUtils.GetStringByKey("chat.binary_meshtastic_forbidden"))
-                .ConfigureAwait(false);
+        if (await BlockBinaryOnMeshtasticAsync(session, "video", "chat.video").ConfigureAwait(false))
             return;
-        }
 
         var bytes = await ReadPickBytesAsync(video, ct).ConfigureAwait(false);
         var fileName = string.IsNullOrWhiteSpace(video.FileName)
@@ -472,14 +431,8 @@ public partial class ChatDetailPage
     {
         try
         {
-            if (session.IsMeshtasticPathActive)
-            {
-                await UiAlertAsync(
-                        LocalizationUtils.GetStringByKey("chat.voice"),
-                        LocalizationUtils.GetStringByKey("chat.binary_meshtastic_forbidden"))
-                    .ConfigureAwait(false);
+            if (await BlockBinaryOnMeshtasticAsync(session, "voice", "chat.voice").ConfigureAwait(false))
                 return;
-            }
 
             var recorded = await voice.TakeResultAsync(ct).ConfigureAwait(false);
             AppLog.BinaryLoaded("voice", recorded.FileName, recorded.Bytes.Length);
@@ -599,6 +552,22 @@ public partial class ChatDetailPage
     private async Task PrepareBinarySendAsync()
     {
         await MessengerServersBootstrap.EnsureRunningAsync(_p2p, _logger).ConfigureAwait(false);
+    }
+
+    /// <summary>TRL-34: UI gate + Info log; protocol layer also blocks in ShortP2P.</summary>
+    private async Task<bool> BlockBinaryOnMeshtasticAsync(
+        ChatP2PSession? session, string what, string titleKey)
+    {
+        if (session?.IsMeshtasticPathActive != true)
+            return false;
+        var chatId = _chat?.Id ?? 0;
+        _logger.LogInformation("{Prefix} {What} (chat {ChatId})",
+            ChatP2PSession.MeshtasticBinarySkipLogPrefix, what, chatId);
+        await UiAlertAsync(
+                LocalizationUtils.GetStringByKey(titleKey),
+                LocalizationUtils.GetStringByKey("chat.binary_meshtastic_forbidden"))
+            .ConfigureAwait(false);
+        return true;
     }
 }
 

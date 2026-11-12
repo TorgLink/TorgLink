@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using NAudio.Wave;
 using ShortP2P.Client.ChatMedia;
+using ShortP2P.Client.Services;
 using ShortP2P.Discovery;
 using TorgLink.Localization;
 using Timer = System.Windows.Forms.Timer;
@@ -28,14 +29,8 @@ public sealed partial class ChatForm
         if (_p2pSession == null)
             return;
 
-        if (_p2pSession.IsMeshtasticPathActive)
-        {
-            MessageBox.Show(this,
-                LocalizationUtils.GetStringByKey("chat.binary_meshtastic_forbidden"),
-                LocalizationUtils.GetStringByKey("chat.file"),
-                MessageBoxButtons.OK, MessageBoxIcon.Information);
+        if (BlockBinaryOnMeshtastic("image"))
             return;
-        }
 
         using var dlg = new OpenFileDialog
         {
@@ -120,14 +115,8 @@ public sealed partial class ChatForm
         if (_p2pSession == null)
             return;
 
-        if (_p2pSession.IsMeshtasticPathActive)
-        {
-            MessageBox.Show(this,
-                LocalizationUtils.GetStringByKey("chat.binary_meshtastic_forbidden"),
-                LocalizationUtils.GetStringByKey("chat.file"),
-                MessageBoxButtons.OK, MessageBoxIcon.Information);
+        if (BlockBinaryOnMeshtastic("file"))
             return;
-        }
 
         using var dlg = new OpenFileDialog
         {
@@ -157,14 +146,8 @@ public sealed partial class ChatForm
                 return;
             }
 
-            if (_p2pSession!.IsMeshtasticPathActive)
-            {
-                MessageBox.Show(this,
-                    LocalizationUtils.GetStringByKey("chat.binary_meshtastic_forbidden"),
-                    LocalizationUtils.GetStringByKey("chat.file"),
-                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+            if (BlockBinaryOnMeshtastic(isVideo ? "video" : "file"))
                 return;
-            }
 
             var mime = videoMime;
             var bytes = await ReadAllBytesAsync(path).ConfigureAwait(true);
@@ -222,14 +205,8 @@ public sealed partial class ChatForm
         if (_p2pSession == null)
             return;
 
-        if (_voiceWaveIn == null && _p2pSession.IsMeshtasticPathActive)
-        {
-            MessageBox.Show(this,
-                LocalizationUtils.GetStringByKey("chat.binary_meshtastic_forbidden"),
-                LocalizationUtils.GetStringByKey("chat.voice"),
-                MessageBoxButtons.OK, MessageBoxIcon.Information);
+        if (_voiceWaveIn == null && BlockBinaryOnMeshtastic("voice", LocalizationUtils.GetStringByKey("chat.voice")))
             return;
-        }
 
         if (_voiceWaveIn != null)
         {
@@ -527,4 +504,18 @@ public sealed partial class ChatForm
 
     private static Task<byte[]> ReadAllBytesAsync(string path) =>
         Task.Run(() => File.ReadAllBytes(path));
+
+    /// <summary>TRL-34: UI gate + Info log; protocol layer also blocks in ShortP2P.</summary>
+    private bool BlockBinaryOnMeshtastic(string what, string? dialogTitle = null)
+    {
+        if (_p2pSession?.IsMeshtasticPathActive != true)
+            return false;
+        _logger.LogInformation("{Prefix} {What} (chat {ChatId})",
+            ChatP2PSession.MeshtasticBinarySkipLogPrefix, what, _chat.Id);
+        MessageBox.Show(this,
+            LocalizationUtils.GetStringByKey("chat.binary_meshtastic_forbidden"),
+            dialogTitle ?? LocalizationUtils.GetStringByKey("chat.file"),
+            MessageBoxButtons.OK, MessageBoxIcon.Information);
+        return true;
+    }
 }

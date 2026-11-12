@@ -1266,6 +1266,8 @@ public partial class ChatDetailPage : ContentPage
         ClearDeliveryIssue();
         if (_p2pSession?.IsMeshtasticPathActive == true)
         {
+            _logger.LogInformation("{Prefix} voice (chat {ChatId})",
+                ChatP2PSession.MeshtasticBinarySkipLogPrefix, _chat?.Id ?? 0);
             var msg = LocalizationUtils.GetStringByKey("chat.binary_meshtastic_forbidden");
             await DisplayAlert(LocalizationUtils.GetStringByKey("chat.voice"), msg, LocalizationUtils.GetStringByKey("ok"))
                 .ConfigureAwait(true);

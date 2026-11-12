@@ -501,9 +501,25 @@ internal static class AppEndpoints
         if (chat == null)
             return Results.NotFound();
         var mime = string.IsNullOrWhiteSpace(file.ContentType) ? "application/octet-stream" : file.ContentType;
+        var logger = logs.CreateLogger("SendFile");
+        var session = ChatSessionHelper.GetSessionOrNull(p2p, auth, chats, chat);
+        if (session == null)
+            return Results.Unauthorized();
+        // TRL-34: never accept binary uploads for chats whose outbound path is Meshtastic/LoRa.
+        if (session.IsMeshtasticPathActive)
+        {
+            logger.LogInformation(
+                "{Prefix} {What} (chat {ChatId})",
+                ChatP2PSession.MeshtasticBinarySkipLogPrefix,
+                mime.StartsWith("image/", StringComparison.OrdinalIgnoreCase) ? "image" : "file",
+                chat.Id);
+            return Results.BadRequest(new
+            {
+                error = "Binary transfers (voice, images, documents) are not allowed on the Meshtastic path."
+            });
+        }
+
         var limit = MediaFileLimits.LimitFor(p2p.Settings.TrafficQuality, mime);
-        if (lora.IsRunning)
-            limit = Math.Min(limit, MeshtasticTransportHost.MaxBinaryBytes);
         if (file.Length > limit)
             return Results.BadRequest(new { error = $"File is larger than {FormatByteLimit(limit)}." });
 
@@ -512,13 +528,9 @@ internal static class AppEndpoints
         var bytes = ms.ToArray();
         if (bytes.Length > limit)
             return Results.BadRequest(new { error = $"File is larger than {FormatByteLimit(limit)}." });
-        var logger = logs.CreateLogger("SendFile");
         AppLog.BinaryLoaded("chat-file", file.FileName, bytes.Length);
         try
         {
-            var session = ChatSessionHelper.GetSessionOrNull(p2p, auth, chats, chat);
-            if (session == null)
-                return Results.Unauthorized();
             ChatSessionHelper.BeginEnsureSession(p2p, auth, chats, chat, logger, lora);
             if (mime.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
                 await session.SendImageAsync(bytes, mime).ConfigureAwait(false);
