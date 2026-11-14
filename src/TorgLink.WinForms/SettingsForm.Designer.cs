@@ -25,6 +25,7 @@ partial class SettingsForm
     private System.Windows.Forms.Label _udpPort;
     private System.Windows.Forms.CheckBox _lan;
     private System.Windows.Forms.CheckBox _shareRoutes;
+    private System.Windows.Forms.CheckBox _visibleForSearch;
     private System.Windows.Forms.Label _lblEconomy;
     private System.Windows.Forms.ComboBox _economy;
     private System.Windows.Forms.Label _economyHint;
@@ -95,6 +96,7 @@ partial class SettingsForm
         this._pageNetwork = new System.Windows.Forms.TableLayoutPanel();
         this._lan = new System.Windows.Forms.CheckBox();
         this._shareRoutes = new System.Windows.Forms.CheckBox();
+        this._visibleForSearch = new System.Windows.Forms.CheckBox();
         this._lblUdpCaption = new System.Windows.Forms.Label();
         this._udpPort = new System.Windows.Forms.Label();
         this._lblEconomy = new System.Windows.Forms.Label();
@@ -316,6 +318,7 @@ partial class SettingsForm
         this._pageNetwork.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 100F));
         this._pageNetwork.Controls.Add(this._lan);
         this._pageNetwork.Controls.Add(this._shareRoutes);
+        this._pageNetwork.Controls.Add(this._visibleForSearch);
         this._pageNetwork.Controls.Add(this._lblUdpCaption);
         this._pageNetwork.Controls.Add(this._udpPort);
         this._pageNetwork.Controls.Add(this._lblEconomy);
@@ -326,7 +329,8 @@ partial class SettingsForm
         this._pageNetwork.Location = new System.Drawing.Point(0, 0);
         this._pageNetwork.Name = "_pageNetwork";
         this._pageNetwork.Padding = new System.Windows.Forms.Padding(12);
-        this._pageNetwork.RowCount = 9;
+        this._pageNetwork.RowCount = 10;
+        this._pageNetwork.RowStyles.Add(new System.Windows.Forms.RowStyle());
         this._pageNetwork.RowStyles.Add(new System.Windows.Forms.RowStyle());
         this._pageNetwork.RowStyles.Add(new System.Windows.Forms.RowStyle());
         this._pageNetwork.RowStyles.Add(new System.Windows.Forms.RowStyle());
@@ -353,16 +357,28 @@ partial class SettingsForm
         // 
         this._shareRoutes.AutoSize = true;
         this._shareRoutes.Location = new System.Drawing.Point(15, 51);
-        this._shareRoutes.Margin = new System.Windows.Forms.Padding(3, 3, 3, 20);
+        this._shareRoutes.Margin = new System.Windows.Forms.Padding(3, 3, 3, 8);
         this._shareRoutes.Name = "_shareRoutes";
         this._shareRoutes.Size = new System.Drawing.Size(283, 25);
         this._shareRoutes.TabIndex = 1;
         this._shareRoutes.Text = "Делиться маршрутами (PeerSearch)";
         // 
+        // _visibleForSearch
+        // 
+        this._visibleForSearch.AutoSize = true;
+        this._visibleForSearch.Checked = true;
+        this._visibleForSearch.CheckState = System.Windows.Forms.CheckState.Checked;
+        this._visibleForSearch.Location = new System.Drawing.Point(15, 87);
+        this._visibleForSearch.Margin = new System.Windows.Forms.Padding(3, 3, 3, 20);
+        this._visibleForSearch.Name = "_visibleForSearch";
+        this._visibleForSearch.Size = new System.Drawing.Size(180, 25);
+        this._visibleForSearch.TabIndex = 2;
+        this._visibleForSearch.Text = "Visible for search";
+        // 
         // _lblUdpCaption
         // 
         this._lblUdpCaption.AutoSize = true;
-        this._lblUdpCaption.Location = new System.Drawing.Point(15, 96);
+        this._lblUdpCaption.Location = new System.Drawing.Point(15, 132);
         this._lblUdpCaption.Name = "_lblUdpCaption";
         this._lblUdpCaption.Size = new System.Drawing.Size(138, 21);
         this._lblUdpCaption.TabIndex = 2;

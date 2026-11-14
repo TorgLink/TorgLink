@@ -121,6 +121,7 @@ export function SettingsPage() {
         sw(t("settings.lan"), s.lan, "lan"),
         sw(t("settings.bluetooth"), s.bluetooth, "bluetooth"),
         sw(t("settings.routing"), s.routing, "routing"),
+        sw(t("settings.visible_for_search"), s.visibleForSearch !== false, "visibleForSearch"),
         el("label", null, t("settings.economy"), quality)
       )
     );

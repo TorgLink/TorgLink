@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
 namespace TorgLink.Localization;
@@ -126,6 +126,7 @@ public static partial class StringCatalog
         ["settings.udp"] = "UDP (local port)",
         ["settings.lan"] = "LAN scanning",
         ["settings.routing"] = "P2P routing",
+        ["settings.visible_for_search"] = "Visible for search",
         ["settings.database"] = "Database",
         ["settings.database_hint"] = "Requires app restart",
         ["settings.database_change_title"] = "Change Database",

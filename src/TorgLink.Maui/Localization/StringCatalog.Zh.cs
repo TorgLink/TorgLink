@@ -122,6 +122,7 @@ internal static partial class StringCatalog
         ["settings.udp"] = "UDP（本地端口）",
         ["settings.lan"] = "局域网扫描",
         ["settings.routing"] = "P2P 路由",
+        ["settings.visible_for_search"] = "对搜索可见",
         ["settings.economy"] = "流量节省",
         ["settings.storage"] = "存储",
         ["settings.export_keys"] = "导出密钥",

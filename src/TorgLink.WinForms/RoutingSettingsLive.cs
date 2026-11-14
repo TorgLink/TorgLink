@@ -20,5 +20,6 @@ internal static class RoutingSettingsLive
         dest.TrafficQuality = src.TrafficQuality;
         dest.AdvertisedPeerCapabilities = (src.AdvertisedPeerCapabilities | PresencePeerCapabilities.Chat)
                                         & PresencePeerCapabilities.AllDefined;
+        dest.VisibleForSearch = src.VisibleForSearch;
     }
 }
