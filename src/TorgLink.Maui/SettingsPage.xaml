@@ -107,6 +107,15 @@
             <BoxView HeightRequest="1" Color="{DynamicResource Hairline}" Margin="16,0" />
             <Grid Padding="16,12" ColumnDefinitions="*,Auto">
                 <VerticalStackLayout Spacing="2">
+                    <Label x:Name="VisibleForSearchLabel" FontSize="16" TextColor="{DynamicResource MidnightBlue}" />
+                    <Label x:Name="VisibleForSearchHint" FontSize="12" TextColor="{DynamicResource MutedText}" />
+                </VerticalStackLayout>
+                <Switch x:Name="VisibleForSearchSwitch" Grid.Column="1" OnColor="{DynamicResource Accent}"
+                        Toggled="OnVisibleForSearchToggled" />
+            </Grid>
+            <BoxView HeightRequest="1" Color="{DynamicResource Hairline}" Margin="16,0" />
+            <Grid Padding="16,12" ColumnDefinitions="*,Auto">
+                <VerticalStackLayout Spacing="2">
                     <Label x:Name="DatabaseLabel" FontSize="16" TextColor="{DynamicResource MidnightBlue}" />
                     <Label x:Name="DatabaseHint" FontSize="12" TextColor="{DynamicResource MutedText}" />
                 </VerticalStackLayout>

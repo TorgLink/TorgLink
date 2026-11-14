@@ -203,6 +203,7 @@ public sealed partial class SettingsForm : AppForm
 
         _lan.Checked = _live.EnableUdpTransport;
         _shareRoutes.Checked = _live.AdvertisedPeerCapabilities.HasFlag(PresencePeerCapabilities.PeerSearch);
+        _visibleForSearch.Checked = _live.VisibleForSearch;
         _hops.Value = Clamp(_live.MaxSearchHops, 1, 3);
         _attempts.Value = Clamp(_live.SendFailureSearchAttempts, 1, 20);
         _delayMs.Value = Clamp((decimal)_live.SendFailureRetryDelay.TotalMilliseconds, 0, 3_600_000);
@@ -240,6 +241,7 @@ public sealed partial class SettingsForm : AppForm
         _lblUdpCaption.Text = LocalizationUtils.GetStringByKey("settings.udp");
         _lan.Text = LocalizationUtils.GetStringByKey("settings.lan");
         _shareRoutes.Text = LocalizationUtils.GetStringByKey("routing.share_routes");
+        _visibleForSearch.Text = LocalizationUtils.GetStringByKey("settings.visible_for_search");
         _lblEconomy.Text = LocalizationUtils.GetStringByKey("settings.economy");
         _lblNoBle.Text = LocalizationUtils.GetStringByKey("settings.bluetooth") + " — n/a";
 
@@ -535,11 +537,14 @@ public sealed partial class SettingsForm : AppForm
             if (_shareRoutes.Checked)
                 cap |= PresencePeerCapabilities.PeerSearch;
             s.AdvertisedPeerCapabilities = cap;
+            s.VisibleForSearch = _visibleForSearch.Checked;
 
             await _store.SaveAsync(s).ConfigureAwait(false);
             RoutingSettingsLive.Overlay(_live, s);
-            _logger.LogInformation("Settings saved: udp={Udp} quality={Quality} hops={Hops}",
-                s.EnableUdpTransport, s.TrafficQuality, s.MaxSearchHops);
+            _sync.Manager.VisibleForSearch = s.VisibleForSearch;
+            _ = _sync.ChangeVisibilityOnAllServersAsync(s.VisibleForSearch);
+            _logger.LogInformation("Settings saved: udp={Udp} quality={Quality} hops={Hops} visible={Visible}",
+                s.EnableUdpTransport, s.TrafficQuality, s.MaxSearchHops, s.VisibleForSearch);
             UpdateProfileSummary();
             MessageBox.Show(this, LocalizationUtils.GetStringByKey("profile.saved"),
                 LocalizationUtils.GetStringByKey("settings.title"), MessageBoxButtons.OK,

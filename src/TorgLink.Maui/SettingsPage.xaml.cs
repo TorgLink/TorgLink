@@ -95,10 +95,14 @@ public partial class SettingsPage : ContentPage
         BluetoothSwitch.IsToggled = _p2p.Settings.EnableBluetoothTransport;
         LanSwitch.IsToggled = _p2p.Settings.EnableUdpTransport;
         RoutingSwitch.IsToggled = _p2p.Settings.AdvertisedPeerCapabilities.HasFlag(PresencePeerCapabilities.PeerSearch);
+        VisibleForSearchSwitch.IsToggled = _p2p.Settings.VisibleForSearch;
         _suppressToggle = false;
         BluetoothHint.Text = BluetoothSwitch.IsToggled ? LocalizationUtils.GetStringByKey("on") : LocalizationUtils.GetStringByKey("off");
         LanHint.Text = LanSwitch.IsToggled ? LocalizationUtils.GetStringByKey("on") : LocalizationUtils.GetStringByKey("off");
         RoutingHint.Text = RoutingSwitch.IsToggled ? LocalizationUtils.GetStringByKey("on") : LocalizationUtils.GetStringByKey("off");
+        VisibleForSearchHint.Text = VisibleForSearchSwitch.IsToggled
+            ? LocalizationUtils.GetStringByKey("on")
+            : LocalizationUtils.GetStringByKey("off");
         EconomyHint.Text = MediaEconomy.Hint(_p2p.Settings.TrafficQuality);
         StorageLabel.Text = FormatStorage();
 
@@ -219,6 +223,7 @@ public partial class SettingsPage : ContentPage
         UdpLabel.Text = LocalizationUtils.GetStringByKey("settings.udp");
         LanLabel.Text = LocalizationUtils.GetStringByKey("settings.lan");
         RoutingLabel.Text = LocalizationUtils.GetStringByKey("settings.routing");
+        VisibleForSearchLabel.Text = LocalizationUtils.GetStringByKey("settings.visible_for_search");
         DatabaseLabel.Text = LocalizationUtils.GetStringByKey("settings.database");
         DatabaseHint.Text = LocalizationUtils.GetStringByKey("settings.database_hint");
         EconomyLabel.Text = LocalizationUtils.GetStringByKey("settings.economy");
@@ -484,6 +489,16 @@ public partial class SettingsPage : ContentPage
         }).ConfigureAwait(true);
     }
 
+    private async void OnVisibleForSearchToggled(object? sender, ToggledEventArgs e)
+    {
+        VisibleForSearchHint.Text = e.Value
+            ? LocalizationUtils.GetStringByKey("on")
+            : LocalizationUtils.GetStringByKey("off");
+        if (_suppressToggle)
+            return;
+        await SaveAsync(s => s.VisibleForSearch = e.Value).ConfigureAwait(true);
+    }
+
     private async Task<bool> SaveAsync(Action<P2pRoutingSettings> mutate)
     {
         try
@@ -495,12 +510,15 @@ public partial class SettingsPage : ContentPage
             AppLog.SettingChanged("EnableUdpTransport", s.EnableUdpTransport);
             AppLog.SettingChanged("AdvertisedPeerCapabilities", s.AdvertisedPeerCapabilities);
             AppLog.SettingChanged("TrafficQuality", s.TrafficQuality);
+            AppLog.SettingChanged("VisibleForSearch", s.VisibleForSearch);
             _p2p.Settings.EnableUdpTransport = s.EnableUdpTransport;
             _p2p.Settings.EnableBluetoothTransport = s.EnableBluetoothTransport;
             _p2p.Settings.AdvertisedPeerCapabilities = s.AdvertisedPeerCapabilities | PresencePeerCapabilities.Chat;
+            _p2p.Settings.VisibleForSearch = s.VisibleForSearch;
             MediaEconomy.Apply(_p2p, s.TrafficQuality);
             _bluetoothTransport.ApplySettings(s);
             Header.Bind(_auth.CurrentUser, _p2p);
+            _ = _p2p.PushSearchVisibilityAsync();
             return true;
         }
         catch (Exception ex)

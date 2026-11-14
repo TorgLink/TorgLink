@@ -122,6 +122,7 @@ internal static partial class StringCatalog
         ["settings.udp"] = "UDP (lokaler Port)",
         ["settings.lan"] = "LAN-Scan",
         ["settings.routing"] = "P2P-Routing",
+        ["settings.visible_for_search"] = "Sichtbar für Suche",
         ["settings.economy"] = "Datensparmodus",
         ["settings.storage"] = "Speicher",
         ["settings.export_keys"] = "Schlüssel exportieren",
