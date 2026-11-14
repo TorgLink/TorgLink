@@ -1030,6 +1030,7 @@ internal static class AppEndpoints
             return deny;
         var persisted = await store.LoadAsync().ConfigureAwait(false);
         p2p.Settings.TrafficQuality = persisted.TrafficQuality;
+        p2p.Settings.VisibleForSearch = persisted.VisibleForSearch;
         long bytes = 0;
         try
         {
@@ -1053,6 +1054,7 @@ internal static class AppEndpoints
             bluetooth = p2p.Settings.EnableBluetoothTransport,
             lan = p2p.Settings.EnableUdpTransport,
             routing = p2p.Settings.AdvertisedPeerCapabilities.HasFlag(PresencePeerCapabilities.PeerSearch),
+            visibleForSearch = persisted.VisibleForSearch,
             trafficQuality = persisted.TrafficQuality.ToString(),
             language = WebPrefs.Get("torglink_language", "Russian"),
             theme = WebPrefs.Get("torglink_theme", "DarkFlame"),
@@ -1079,6 +1081,9 @@ internal static class AppEndpoints
             s.AdvertisedPeerCapabilities = cap;
         }
 
+        if (body.VisibleForSearch is { } visible)
+            s.VisibleForSearch = visible;
+
         if (!string.IsNullOrEmpty(body.TrafficQuality) &&
             Enum.TryParse<TrafficQualityMode>(body.TrafficQuality, out var tq))
             s.TrafficQuality = tq;
@@ -1087,7 +1092,9 @@ internal static class AppEndpoints
         p2p.Settings.EnableBluetoothTransport = s.EnableBluetoothTransport;
         p2p.Settings.AdvertisedPeerCapabilities = s.AdvertisedPeerCapabilities | PresencePeerCapabilities.Chat;
         p2p.Settings.TrafficQuality = s.TrafficQuality;
+        p2p.Settings.VisibleForSearch = s.VisibleForSearch;
         bluetooth.ApplySettings(s);
+        await p2p.PushSearchVisibilityAsync().ConfigureAwait(false);
         return Results.Ok();
     }
 
@@ -1365,7 +1372,12 @@ internal static class AppEndpoints
     private sealed record OpenPeerBody(string? NetworkId);
     private sealed record ServerUrlBody(string? BaseUrl);
     private sealed record ActiveBody(bool Active);
-    private sealed record SettingsBody(bool? Bluetooth, bool? Lan, bool? Routing, string? TrafficQuality);
+    private sealed record SettingsBody(
+        bool? Bluetooth,
+        bool? Lan,
+        bool? Routing,
+        bool? VisibleForSearch,
+        string? TrafficQuality);
     private sealed record LoRaBody(bool Enabled, string? ComPort, int BaudRate, string? JurisdictionCode, int TxPowerDbm);
     private sealed record RoutingBody(
         int MaxSearchHops,

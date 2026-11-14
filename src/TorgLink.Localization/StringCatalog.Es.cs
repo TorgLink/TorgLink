@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
 namespace TorgLink.Localization;
@@ -125,6 +125,7 @@ public static partial class StringCatalog
         ["settings.udp"] = "UDP (puerto local)",
         ["settings.lan"] = "Escaneo LAN",
         ["settings.routing"] = "Enrutamiento P2P",
+        ["settings.visible_for_search"] = "Visible en la búsqueda",
         ["settings.economy"] = "Ahorro de tráfico",
         ["settings.storage"] = "Almacenamiento",
         ["settings.export_keys"] = "Exportar claves",
