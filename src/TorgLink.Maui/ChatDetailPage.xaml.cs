@@ -1497,6 +1497,10 @@ public partial class ChatDetailPage : ContentPage
             AppLog.BinaryLoaded("play-voice", "voice.ogg", oggBytes.Length);
             await VoiceMessagePlayer.PlayAsync(oggBytes, _logger).ConfigureAwait(true);
         }
+        catch (OperationCanceledException)
+        {
+            // Stop() from OnDisappearing / newer tap — no alert.
+        }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Voice play failed");

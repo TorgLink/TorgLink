@@ -8,29 +8,50 @@ namespace TorgLink.Maui.Services;
 internal static class OggOpusEncoder
 {
     private const int OpusSampleRate = 48_000;
+    private const int MinAudiblePeak = 32;
 
     public static byte[] EncodeWavPcm(string wavPath, int bitrateBps = MediaEconomy.DefaultSpeechBitrateBps)
     {
-        var (samples, sampleRate, channels) = ReadWavPcm16(wavPath);
+        ArgumentException.ThrowIfNullOrEmpty(wavPath);
+        return EncodeWavPcm(File.ReadAllBytes(wavPath), bitrateBps);
+    }
+
+    public static byte[] EncodeWavPcm(byte[] wavBytes, int bitrateBps = MediaEconomy.DefaultSpeechBitrateBps)
+    {
+        ArgumentNullException.ThrowIfNull(wavBytes);
+        var (samples, sampleRate, channels) = ReadWavPcm16(wavBytes);
         if (samples.Length == 0)
             throw new InvalidOperationException("WAV is empty.");
+
+        var mono = channels == 1 ? samples : MixToMono(samples, channels);
+        EnsureAudible(mono);
 
         using var output = new MemoryStream();
         var encoder = OpusCodecFactory.CreateEncoder(OpusSampleRate, 1, OpusApplication.OPUS_APPLICATION_VOIP);
         encoder.Bitrate = Math.Clamp(bitrateBps, MediaEconomy.MinVoiceBitrateBps, 64_000);
-        var ogg = new OpusOggWriteStream(encoder, output, inputSampleRate: sampleRate, leaveOpen: true);
-        if (channels == 1)
+        var tags = new OpusTags();
+        var ogg = new OpusOggWriteStream(encoder, output, tags, sampleRate);
+        ogg.WriteSamples(mono, 0, mono.Length);
+        ogg.Finish();
+        var bytes = output.ToArray();
+        if (bytes.Length == 0)
+            throw new InvalidOperationException("Пустой выход кодера.");
+        return bytes;
+    }
+
+    private static void EnsureAudible(short[] mono)
+    {
+        var peak = 0;
+        for (var i = 0; i < mono.Length; i++)
         {
-            ogg.WriteSamples(samples, 0, samples.Length);
-        }
-        else
-        {
-            var mono = MixToMono(samples, channels);
-            ogg.WriteSamples(mono, 0, mono.Length);
+            var a = Math.Abs(mono[i]);
+            if (a > peak)
+                peak = a;
         }
 
-        ogg.Finish();
-        return output.ToArray();
+        if (peak < MinAudiblePeak)
+            throw new InvalidOperationException(
+                "Запись без звука (микрофон молчит или недоступен). Проверьте доступ к микрофону.");
     }
 
     private static short[] MixToMono(short[] interleaved, int channels)
@@ -49,9 +70,8 @@ internal static class OggOpusEncoder
         return mono;
     }
 
-    private static (short[] samples, int sampleRate, int channels) ReadWavPcm16(string path)
+    private static (short[] samples, int sampleRate, int channels) ReadWavPcm16(byte[] bytes)
     {
-        var bytes = File.ReadAllBytes(path);
         if (bytes.Length < 44)
             throw new InvalidOperationException("WAV header is too short.");
         if (bytes[0] != (byte)'R' || bytes[1] != (byte)'I' || bytes[2] != (byte)'F' || bytes[3] != (byte)'F')
@@ -76,8 +96,16 @@ internal static class OggOpusEncoder
                 channels = BinaryPrimitives.ReadInt16LittleEndian(bytes.AsSpan(payload + 2));
                 sampleRate = BinaryPrimitives.ReadInt32LittleEndian(bytes.AsSpan(payload + 4));
                 bits = BinaryPrimitives.ReadInt16LittleEndian(bytes.AsSpan(payload + 14));
-                if (format != 1)
+                // 1 = PCM, 0xFFFE = WAVE_FORMAT_EXTENSIBLE (treat as PCM when subtype is PCM)
+                if (format is not (1 or 0xFFFE))
                     throw new InvalidOperationException("Only PCM WAV is supported.");
+                if (format == 0xFFFE && chunkSize >= 40)
+                {
+                    // SubFormat GUID at offset 24 in extensible fmt; PCM = 00000001-0000-0010-8000-00aa00389b71
+                    var sub = bytes.AsSpan(payload + 24, 16);
+                    if (BinaryPrimitives.ReadUInt32LittleEndian(sub) != 1)
+                        throw new InvalidOperationException("Only PCM WAV is supported.");
+                }
             }
             else if (chunkId == 0x61746164) // "data"
             {
