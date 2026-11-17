@@ -1,3 +1,4 @@
+using TorgLink.Maui.Helpers;
 using TorgLink.Maui.Services;
 using Microsoft.Extensions.Logging;
 using ShortP2P.Auth;
@@ -142,7 +143,7 @@ public partial class AddChatPage : ContentPage
         await using var stream = await photo.OpenReadAsync().ConfigureAwait(true);
         using var ms = new MemoryStream();
         await stream.CopyToAsync(ms).ConfigureAwait(true);
-        var bytes = ms.ToArray();
+        var bytes = CameraHelper.Normalize(ms.ToArray());
         AppLog.BinaryLoaded("peer-qr-camera", photo.FileName, bytes.Length);
 
         if (!PeerQrService.TryDecodeImage(bytes, out var payload, out var err))

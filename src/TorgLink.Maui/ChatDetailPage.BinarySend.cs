@@ -346,9 +346,8 @@ public partial class ChatDetailPage
         if (!ImageAttachHelper.TryGetMimeFromExtension(fileName, out var mime))
             mime = "image/jpeg";
 
-        // TRL-31: the shot must be sent as it was displayed. Apply the orientation
-        // (rotation / selfie-preview mirror) to the pixels so the photo reads left to right
-        // on any platform, including clients that ignore orientation metadata.
+        // TRL-31 / TRL-38: bake EXIF orientation into pixels; on Windows also undo
+        // CameraCaptureUI horizontal mirroring so the photo reads left to right everywhere.
         var normalized = CameraHelper.Normalize(bytes);
         if (!ReferenceEquals(normalized, bytes))
         {
@@ -442,10 +441,53 @@ public partial class ChatDetailPage
             return;
         }
 
-        var bytes = await ReadPickBytesAsync(video, ct).ConfigureAwait(false);
         var fileName = string.IsNullOrWhiteSpace(video.FileName)
             ? $"camera-{DateTime.UtcNow:yyyyMMdd-HHmmss}.mp4"
             : video.FileName;
+
+        string? unmirrorTemp = null;
+        byte[] bytes;
+        try
+        {
+#if WINDOWS
+            // TRL-38: Windows CameraCaptureUI video is mirrored; flip before send/transcode.
+            var sourcePath = video.FullPath;
+            if (string.IsNullOrWhiteSpace(sourcePath) || !File.Exists(sourcePath))
+            {
+                sourcePath = Path.Combine(FileSystem.CacheDirectory, $"torglink_cam_{DateTime.UtcNow.Ticks}_{fileName}");
+                await using (var src = await video.OpenReadAsync().ConfigureAwait(false))
+                await using (var dst = File.Create(sourcePath))
+                    await src.CopyToAsync(dst, ct).ConfigureAwait(false);
+                unmirrorTemp = sourcePath;
+            }
+
+            var fixedPath = await CameraHelper.UnmirrorVideoAsync(sourcePath, ct).ConfigureAwait(false);
+            if (!string.Equals(fixedPath, sourcePath, StringComparison.OrdinalIgnoreCase))
+            {
+                if (unmirrorTemp != null)
+                {
+                    try { File.Delete(unmirrorTemp); } catch { /* ignore */ }
+                }
+
+                unmirrorTemp = fixedPath;
+                sourcePath = fixedPath;
+            }
+
+            bytes = await File.ReadAllBytesAsync(sourcePath, ct).ConfigureAwait(false);
+#else
+            bytes = await ReadPickBytesAsync(video, ct).ConfigureAwait(false);
+#endif
+        }
+        finally
+        {
+#if WINDOWS
+            if (unmirrorTemp != null)
+            {
+                try { File.Delete(unmirrorTemp); } catch { /* ignore */ }
+            }
+#endif
+        }
+
         AppLog.BinaryLoaded("camera-video", fileName, bytes.Length);
         if (bytes.Length < 32)
         {
