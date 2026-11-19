@@ -17,9 +17,11 @@ public sealed record LoRaDiscoveredPeerInfo(
     DateTime LastSeenUtc);
 
 /// <summary>A node from the Meshtastic radio database (not necessarily a TorgLink peer).</summary>
+/// <param name="LastHeardUnix">Board NodeInfo.last_heard (Unix seconds). Zero when the board omitted it.</param>
 public sealed record LoRaRadioNodeInfo(
     uint NodeNumber,
     string NodeId,
     string LongName,
     string ShortName,
-    string DisplayName);
+    string DisplayName,
+    uint LastHeardUnix = 0);
