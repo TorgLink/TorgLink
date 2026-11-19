@@ -38,6 +38,7 @@ public sealed class MeshtasticTransportHost : IAdditionalTransportProvider, IAsy
     private LoRaTransportSettings _settings = new();
     private readonly ConcurrentDictionary<string, LoRaDiscoveredPeerInfo> _discovered = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<uint, long> _lastPresenceReplyTicks = new();
+    private readonly ConcurrentDictionary<uint, MeshtasticNodeLiveness.NodePresenceState> _nodePresence = new();
     private Func<byte[], bool>? _isServerNetworkId;
     private int _directorySyncRunning;
     private CancellationTokenSource? _presenceLoopCts;
@@ -51,6 +52,12 @@ public sealed class MeshtasticTransportHost : IAdditionalTransportProvider, IAsy
 
     /// <summary>Online window: with 5-minute pings a peer stays online until two pings in a row are missed.</summary>
     private static readonly TimeSpan PresenceFreshness = TimeSpan.FromMinutes(12);
+
+    /// <summary>
+    ///     How often the host re-reads the board node list. Stored rows are replayed on a similar
+    ///     cadence; a node is live only when <see cref="MeshtasticNodeLiveness"/> says last_heard is recent.
+    /// </summary>
+    private static readonly TimeSpan RadioNodePollInterval = TimeSpan.FromSeconds(2);
 
     private const long PresenceReplyIntervalMs = 60_000;
 
@@ -107,6 +114,32 @@ public sealed class MeshtasticTransportHost : IAdditionalTransportProvider, IAsy
         ArgumentNullException.ThrowIfNull(settings);
         await _store.SaveAsync(settings).ConfigureAwait(false);
         _settings = settings;
+
+        // A save that keeps the open session (same port and jurisdiction) still pushes the region.
+        // A save that restarts the session writes the region from EnsureStartedAsync instead.
+        MeshatasticTransport? transport = null;
+        var sameSession = false;
+        lock (_transportSync)
+        {
+            transport = _transport;
+            sameSession = transport != null && ActiveOptionsMatch(settings);
+        }
+
+        if (!sameSession || transport == null)
+            return;
+
+        var jurisdiction = JurisdictionCatalog.Find(settings.JurisdictionCode) ?? JurisdictionCatalog.Unset;
+        if (jurisdiction.IsUnset)
+            return;
+
+        try
+        {
+            await transport.ApplyJurisdictionAsync(jurisdiction).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex, "Failed to write LoRa region {Code} after save", jurisdiction.Code);
+        }
     }
 
     /// <summary>
@@ -183,6 +216,18 @@ public sealed class MeshtasticTransportHost : IAdditionalTransportProvider, IAsy
             {
                 _transport = transport;
                 _activeOptions = options;
+            }
+
+            try
+            {
+                await transport.ApplyJurisdictionAsync(jurisdiction, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "Failed to write LoRa region {Code}; board channel left unchanged",
+                    jurisdiction.Code);
             }
 
             StartPresenceLoop(transport);
@@ -471,7 +516,8 @@ public sealed class MeshtasticTransportHost : IAdditionalTransportProvider, IAsy
             if (self != null && node.NodeNumber == self.Value)
                 continue;
             list.Add(new LoRaRadioNodeInfo(
-                node.NodeNumber, node.NodeId, node.LongName, node.ShortName, node.DisplayName));
+                node.NodeNumber, node.NodeId, node.LongName, node.ShortName, node.DisplayName,
+                node.LastHeardUnix));
         }
 
         return list;
@@ -561,6 +607,11 @@ public sealed class MeshtasticTransportHost : IAdditionalTransportProvider, IAsy
         var nick = string.IsNullOrWhiteSpace(nickname) ? idShort : nickname.Trim();
         var mesh = MeshId.FromNodeNumber(fromNode);
         _discovered[id] = new LoRaDiscoveredPeerInfo(idShort, nick, mesh.ToHex(), DateTime.UtcNow);
+        // Bound only from a parsed presence card. A node-database row must not remember the peer.
+        _nodePresence.AddOrUpdate(
+            fromNode,
+            _ => new MeshtasticNodeLiveness.NodePresenceState(0, 0, true),
+            (_, state) => state.WithBound());
         _logger.LogInformation("Meshtastic presence from {Nick} {NetworkId} node {Node:X8}", nick, idShort, fromNode);
 
         PeerPresenceSeen?.Invoke(this, idShort);
@@ -633,12 +684,102 @@ public sealed class MeshtasticTransportHost : IAdditionalTransportProvider, IAsy
         await transport.SendOpaqueAsync(node, payload, cancellationToken).ConfigureAwait(false);
     }
 
-    // ---- periodic presence broadcast (SMT-1: once per minute) ----
+    // ---- periodic presence broadcast (sparse keep-alive) and live-node offers ----
+
+    /// <summary>
+    ///     Unicast presence to a foreign node when its last_heard is inside the live window.
+    ///     Repeats until <see cref="OnPresenceReceived"/> has bound that node, with
+    ///     <see cref="PresenceReplyIntervalMs"/> between offers. Does not remember a chat:
+    ///     binding stays in <see cref="OnPresenceReceived"/>.
+    /// </summary>
+    private void OfferPresenceToLiveNodes(MeshatasticTransport transport)
+    {
+        uint? self = null;
+        if (transport.LocalMeshId != null && transport.LocalMeshId.TryToNodeNumber(out var selfNode))
+            self = selfNode;
+
+        var now = DateTime.UtcNow;
+        var ticks = Environment.TickCount64;
+        foreach (var node in transport.RadioNodes)
+        {
+            if (node.NodeNumber == 0 || node.NodeNumber == MeshatasticTransport.BroadcastNode)
+                continue;
+            if (self != null && node.NodeNumber == self.Value)
+                continue;
+
+            var previous = _nodePresence.TryGetValue(node.NodeNumber, out var known)
+                ? known
+                : default;
+            var step = MeshtasticNodeLiveness.Observe(
+                previous, node.LastHeardUnix, now, ticks, PresenceReplyIntervalMs);
+            var stored = _nodePresence.AddOrUpdate(
+                node.NodeNumber,
+                step.State,
+                (_, current) => MergePresenceState(step.State, current));
+            if (!step.SendPresence || stored.Bound)
+                continue;
+            if (stored.LastOfferTicks != step.State.LastOfferTicks &&
+                stored.LastOfferTicks != 0 &&
+                unchecked(ticks - stored.LastOfferTicks) < PresenceReplyIntervalMs)
+                continue;
+
+            _lastPresenceReplyTicks[node.NodeNumber] = ticks;
+            var replyTo = node.NodeNumber;
+            var heard = node.LastHeardUnix;
+            _logger.LogInformation(
+                "Node {Node:X8} is live (last_heard {LastHeard}); sending presence",
+                replyTo, heard);
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await SendOwnPresenceAsync(transport, replyTo, CancellationToken.None).ConfigureAwait(false);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    _logger.LogWarning(ex, "Meshtastic presence to live node {Node:X8} failed", replyTo);
+                }
+            });
+        }
+    }
+
+    private static MeshtasticNodeLiveness.NodePresenceState MergePresenceState(
+        MeshtasticNodeLiveness.NodePresenceState step,
+        MeshtasticNodeLiveness.NodePresenceState current)
+    {
+        var merged = step;
+        if (current.Bound)
+            merged = merged.WithBound();
+        if (current.LastHeardUnix > merged.LastHeardUnix)
+            merged = merged with { LastHeardUnix = current.LastHeardUnix };
+        if (current.LastOfferTicks != 0 &&
+            (merged.LastOfferTicks == 0 || unchecked(current.LastOfferTicks - merged.LastOfferTicks) > 0))
+            merged = merged with { LastOfferTicks = current.LastOfferTicks };
+        return merged;
+    }
 
     private void StartPresenceLoop(MeshatasticTransport transport)
     {
         _presenceLoopCts = new CancellationTokenSource();
-        _presenceLoopTask = Task.Run(() => PresenceLoopAsync(transport, _presenceLoopCts.Token));
+        var token = _presenceLoopCts.Token;
+        _presenceLoopTask = Task.Run(async () =>
+        {
+            try
+            {
+                await SendOwnPresenceAsync(transport, MeshatasticTransport.BroadcastNode, token)
+                    .ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Initial mesh presence broadcast failed");
+            }
+
+            await PresenceLoopAsync(transport, token).ConfigureAwait(false);
+        });
     }
 
     private async Task StopPresenceLoopAsync()
@@ -681,12 +822,20 @@ public sealed class MeshtasticTransportHost : IAdditionalTransportProvider, IAsy
     {
         try
         {
-            using var timer = new PeriodicTimer(PresenceBroadcastInterval);
+            var nextBroadcast = DateTime.UtcNow + PresenceBroadcastInterval;
+            using var timer = new PeriodicTimer(RadioNodePollInterval);
             while (await timer.WaitForNextTickAsync(cancellationToken).ConfigureAwait(false))
             {
                 try
                 {
-                    // Presence is best-effort: never cut into an active chunk train or spent duty budget.
+                    OfferPresenceToLiveNodes(transport);
+
+                    if (DateTime.UtcNow < nextBroadcast)
+                        continue;
+                    nextBroadcast = DateTime.UtcNow + PresenceBroadcastInterval;
+
+                    // Keep-alive is sparse. A live-node offer above is handed to the gate, which
+                    // defers it instead of dropping it. This broadcast still yields when chat is on the air.
                     if (transport.IsTxBusy)
                     {
                         _logger.LogInformation(
