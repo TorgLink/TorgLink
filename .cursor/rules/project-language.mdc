@@ -1,0 +1,11 @@
+---
+description: Project and repository language is English
+alwaysApply: true
+---
+
+# Language
+
+- Project and repository language is **English**.
+- Use English for source code identifiers, comments, docs (`README` and others), commit messages, PR titles and bodies, and issue text created for this repo.
+- UI strings stay in English unless a localization layer is explicitly requested.
+- Chat with the user may stay in the user's language. Repository artifacts stay in English.

@@ -1,0 +1,15 @@
+---
+description: Scrum board and issue prefixes for TorgLink, ShortP2P, and LoRa
+alwaysApply: true
+---
+
+# YouTrack issues
+
+- Scrum board: https://botticelli.youtrack.cloud/projects/SMT
+- Track tasks, sprints, and status against this board unless the user names another project.
+- Issue prefixes are fixed. The repositories share one commit format; only the prefix changes:
+  - TorgLink: `TRL-`
+  - ShortP2P: `SHO-`
+  - ShortP2P.LoRa: `SMT-`
+- Use the prefix of the repository being changed. A TorgLink commit that only bumps a submodule still uses `TRL-`.
+- Do not invent another prefix. If the ticket number is unknown, ask before creating a commit or an issue.

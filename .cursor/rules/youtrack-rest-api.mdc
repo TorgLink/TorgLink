@@ -1,0 +1,14 @@
+---
+description: Use YouTrack REST API; keep tokens local only
+alwaysApply: true
+---
+
+# YouTrack access
+
+- Use the YouTrack REST API (`https://botticelli.youtrack.cloud/api/...`) to read and update issues. Do not depend on YouTrack MCP being available.
+- Tokens stay on this machine only:
+  - Read them from a local file or environment variable (user `~/.cursor/mcp.json` `AUTH_HEADER` / Bearer token, or `YOUTRACK_TOKEN`).
+  - Never commit a token.
+  - Never put a raw token into committed docs, rules, PR bodies, or chat replies.
+  - Do not print a full token in shell logs or command lines. Prefer an environment variable already set in the session.
+- If a token is missing or rejected, ask the user to set or refresh it locally. Do not invent credentials.
