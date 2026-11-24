@@ -203,6 +203,7 @@ internal static partial class StringCatalog
         ["chat.state.tap_download"] = "点击下载",
         ["chat.state.tap_play"] = "点击播放",
         ["chat.state.tap_row"] = "点击行 — 下载",
+        ["chat.scroll_new"] = "新消息",
         ["chat.kb"] = "{0} KB",
         ["image.title"] = "图片",
         ["copied"] = "已复制",

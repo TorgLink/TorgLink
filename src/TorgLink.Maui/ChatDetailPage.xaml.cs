@@ -76,6 +76,10 @@ public partial class ChatDetailPage : ContentPage
     private int _reloadEpoch;
     private int _scrollToEndEpoch;
     private int _viewEpoch;
+    /// <summary>True while the viewport should follow new messages to the bottom.</summary>
+    private bool _stickToBottom = true;
+    /// <summary>Ignores Scrolled while programmatic ScrollTo runs (avoids clearing stick).</summary>
+    private bool _ignoreScrollForStick;
     private VoiceRecordingSession? _voice;
     private readonly Dictionary<int, string> _attachmentDurationLabels = new();
     private readonly ConcurrentDictionary<int, byte> _binaryDownloadsInFlight = new();
@@ -194,9 +198,12 @@ public partial class ChatDetailPage : ContentPage
         SetControlHint(BotCommandsButton, LocalizationUtils.GetStringByKey("chat.commands"));
         BotCommandsButton.IsVisible = chat.IsBot;
         MessageEntry.Placeholder = LocalizationUtils.GetStringByKey("chat.message_ph");
+        ScrollToLatestLabel.Text = LocalizationUtils.GetStringByKey("chat.scroll_new");
         _chat = chat;
         _peerNetworkIdShort = chat.PeerNetworkIdShort;
         ActiveChatTracker.Set(chat.Id);
+        if (_boundChatId != chat.Id)
+            ResetScrollStickState(stickToBottom: true);
         RefreshSafetyLabel(chat);
         if (user == null)
         {
@@ -706,7 +713,20 @@ public partial class ChatDetailPage : ContentPage
                     _loadedRows.Insert(0, row);
                 foreach (var row in missing.OrderBy(m => m.SentUtcTicks).ThenBy(m => m.Id))
                     _messageItems.Add(BuildMessageRowVm(row));
-                ScrollMessagesToEnd();
+
+                // Own send always returns to the bottom; inbound respects stick-to-bottom.
+                if (missing.Any(m => m.Outgoing) || _stickToBottom)
+                {
+                    _stickToBottom = true;
+                    ApplyItemsUpdatingScrollMode();
+                    SetScrollToLatestVisible(false);
+                    ScrollMessagesToEnd();
+                }
+                else
+                {
+                    ApplyItemsUpdatingScrollMode();
+                    SetScrollToLatestVisible(true);
+                }
             }
 
             if (MainThread.IsMainThread)
@@ -782,7 +802,11 @@ public partial class ChatDetailPage : ContentPage
                 _loadedRows.AddRange(pageDesc);
                 var chronological = pageDesc.Reverse().ToList();
                 SyncMessageItems(chronological);
-                ScrollMessagesToEnd();
+                if (_stickToBottom)
+                {
+                    SetScrollToLatestVisible(false);
+                    ScrollMessagesToEnd();
+                }
             }
 
             if (MainThread.IsMainThread)
@@ -846,25 +870,84 @@ public partial class ChatDetailPage : ContentPage
         if (_messageItems.Count == 0)
             return;
 
+        ApplyItemsUpdatingScrollMode();
+
         // CollectionView often ignores ScrollTo until items are measured; defer + retry.
+        // Index-based End + MakeVisible passes are needed so the last bubble is fully on screen
+        // (item-reference ScrollTo frequently stops one row short on WinUI).
         var epoch = Interlocked.Increment(ref _scrollToEndEpoch);
+        _ignoreScrollForStick = true;
         Dispatcher.Dispatch(async () =>
         {
-            for (var attempt = 0; attempt < 3; attempt++)
+            try
             {
-                await Task.Delay(attempt == 0 ? 16 : 48).ConfigureAwait(true);
-                if (epoch != Volatile.Read(ref _scrollToEndEpoch) || _messageItems.Count == 0)
-                    return;
-                try
+                for (var attempt = 0; attempt < 6; attempt++)
                 {
-                    MessagesCollection.ScrollTo(_messageItems[^1], position: ScrollToPosition.End, animate: false);
+                    await Task.Delay(attempt == 0 ? 16 : 40).ConfigureAwait(true);
+                    if (epoch != Volatile.Read(ref _scrollToEndEpoch) || _messageItems.Count == 0)
+                        return;
+                    try
+                    {
+                        var lastIndex = _messageItems.Count - 1;
+                        MessagesCollection.ScrollTo(lastIndex, position: ScrollToPosition.End, animate: false);
+                        if (attempt is 2 or 4)
+                        {
+                            MessagesCollection.ScrollTo(lastIndex, position: ScrollToPosition.MakeVisible, animate: false);
+                            MessagesCollection.ScrollTo(lastIndex, position: ScrollToPosition.End, animate: false);
+                        }
+                    }
+                    catch
+                    {
+                        // CollectionView may not be ready yet.
+                    }
                 }
-                catch
+            }
+            finally
+            {
+                if (epoch == Volatile.Read(ref _scrollToEndEpoch))
                 {
-                    // CollectionView may not be ready yet.
+                    _ignoreScrollForStick = false;
+                    // Hide after the jump finished (button press or forced stick scroll).
+                    if (_stickToBottom)
+                        SetScrollToLatestVisible(false);
                 }
             }
         });
+    }
+
+    private void ApplyItemsUpdatingScrollMode()
+    {
+        MessagesCollection.ItemsUpdatingScrollMode = _stickToBottom
+            ? ItemsUpdatingScrollMode.KeepLastItemInView
+            : ItemsUpdatingScrollMode.KeepScrollOffset;
+    }
+
+    private void ResetScrollStickState(bool stickToBottom)
+    {
+        _stickToBottom = stickToBottom;
+        ApplyItemsUpdatingScrollMode();
+        SetScrollToLatestVisible(false);
+    }
+
+    private void SetScrollToLatestVisible(bool visible)
+    {
+        if (ScrollToLatestButton.IsVisible == visible)
+            return;
+        ScrollToLatestButton.IsVisible = visible;
+        if (visible)
+        {
+            ScrollToLatestButton.BackgroundColor = TorgLinkTheme.OutgoingBubble;
+            ScrollToLatestLabel.Text = LocalizationUtils.GetStringByKey("chat.scroll_new");
+        }
+    }
+
+    private void OnScrollToLatestClicked(object? sender, EventArgs e)
+    {
+        // Keep the button until scroll-to-bottom completes; OnMessagesScrolled also
+        // hides it when the user reaches the bottom manually.
+        _stickToBottom = true;
+        ApplyItemsUpdatingScrollMode();
+        ScrollMessagesToEnd();
     }
 
     private void SyncMessageItems(IReadOnlyList<ChatMessageEntity> page)
@@ -1174,6 +1257,36 @@ public partial class ChatDetailPage : ContentPage
         // Chronological list: load older messages when the user scrolls near the top.
         if (!_suppressLoadMore && e.FirstVisibleItemIndex <= 1 && e.VerticalDelta < 0)
             _ = LoadNextMessagesPageAsync();
+
+        if (_ignoreScrollForStick)
+            return;
+
+        var count = _messageItems.Count;
+        if (count == 0)
+            return;
+
+        // Near the newest rows: resume auto-scroll and hide the New affordance.
+        var nearBottom = e.LastVisibleItemIndex >= Math.Max(0, count - 1);
+        if (nearBottom)
+        {
+            if (!_stickToBottom)
+            {
+                _stickToBottom = true;
+                ApplyItemsUpdatingScrollMode();
+            }
+            SetScrollToLatestVisible(false);
+            return;
+        }
+
+        // User moved away from the bottom (mouse / touch / scrollbar).
+        if (Math.Abs(e.VerticalDelta) > 0.5)
+        {
+            if (_stickToBottom)
+            {
+                _stickToBottom = false;
+                ApplyItemsUpdatingScrollMode();
+            }
+        }
     }
 
     private async void OnMessagesRemainingItemsThresholdReached(object? sender, EventArgs e)
@@ -1212,6 +1325,8 @@ public partial class ChatDetailPage : ContentPage
         }
 
         ClearDeliveryIssue();
+        _stickToBottom = true;
+        SetScrollToLatestVisible(false);
 
         try
         {
@@ -1999,6 +2114,8 @@ public partial class ChatDetailPage : ContentPage
             return;
 
         ClearDeliveryIssue();
+        _stickToBottom = true;
+        SetScrollToLatestVisible(false);
         try
         {
             var ok = await _p2pSession.ClearMessagesAsync().ConfigureAwait(true);

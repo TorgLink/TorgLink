@@ -225,6 +225,7 @@ public static partial class StringCatalog
         ["chat.state.tap_download"] = "pulse — descargar",
         ["chat.state.tap_play"] = "pulse — escuchar",
         ["chat.state.tap_row"] = "pulse la fila — Descargar",
+        ["chat.scroll_new"] = "Nuevos",
         ["chat.kb"] = "{0} KB",
         ["image.title"] = "Imagen",
         ["copied"] = "Copiado",
