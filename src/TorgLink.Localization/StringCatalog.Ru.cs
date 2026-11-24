@@ -243,6 +243,7 @@ public static partial class StringCatalog
         ["chat.state.tap_download"] = "нажмите — скачать",
         ["chat.state.tap_play"] = "нажмите — слушать",
         ["chat.state.tap_row"] = "нажмите строку — Скачать",
+        ["chat.scroll_new"] = "Новые",
         ["chat.kb"] = "{0} КБ",
         ["image.title"] = "Изображение",
         ["copied"] = "Скопировано",

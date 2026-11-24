@@ -116,47 +116,76 @@
                 </Grid>
             </Grid>
 
-            <CollectionView x:Name="MessagesCollection" Grid.Row="1"
-                            ItemsUpdatingScrollMode="KeepScrollOffset" Scrolled="OnMessagesScrolled" Margin="8,4">
-                <CollectionView.ItemTemplate>
-                    <DataTemplate>
-                        <Grid Padding="4,3" ColumnDefinitions="Auto,*,Auto">
-                            <Grid.GestureRecognizers>
-                                <TapGestureRecognizer Tapped="OnMessageRowTapped" />
-                            </Grid.GestureRecognizers>
-                            <Border Grid.Column="{Binding BubbleColumn}" MaximumWidthRequest="280" Padding="10,8"
-                                    StrokeThickness="0" StrokeShape="RoundRectangle 14"
-                                    BackgroundColor="{Binding BubbleColor}">
-                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
-                                    <!-- Fixed size: CollectionView recycling made per-bubble SizeChanged inconsistent -->
-                                    <Image Source="{Binding AttachmentIconSource}"
-                                           Aspect="AspectFit"
-                                           VerticalOptions="Center"
-                                           HorizontalOptions="Center"
-                                           WidthRequest="48" HeightRequest="48"
-                                           IsVisible="{Binding IsFile}" />
-                                    <VerticalStackLayout Grid.Column="1" Spacing="4">
-                                        <Label Text="{Binding TextBody}" TextColor="{Binding MessageColor}"
-                                               LineBreakMode="WordWrap" IsVisible="{Binding ShowTextBody}" />
-                                        <VerticalStackLayout Spacing="2" IsVisible="{Binding IsFile}">
-                                            <Label Text="{Binding FileTitleText}" TextColor="{Binding MessageColor}"
-                                                   LineBreakMode="WordWrap" />
-                                            <Label Text="{Binding FileMetaText}" TextColor="{Binding MessageColor}"
-                                                   LineBreakMode="WordWrap" />
+            <Grid Grid.Row="1">
+                <CollectionView x:Name="MessagesCollection"
+                                ItemsUpdatingScrollMode="KeepLastItemInView" Scrolled="OnMessagesScrolled" Margin="8,4">
+                    <!-- Spacer so ScrollTo End fully reveals the last bubble. -->
+                    <CollectionView.Footer>
+                        <BoxView HeightRequest="12" Color="Transparent" />
+                    </CollectionView.Footer>
+                    <CollectionView.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Padding="4,3" ColumnDefinitions="Auto,*,Auto">
+                                <Grid.GestureRecognizers>
+                                    <TapGestureRecognizer Tapped="OnMessageRowTapped" />
+                                </Grid.GestureRecognizers>
+                                <Border Grid.Column="{Binding BubbleColumn}" MaximumWidthRequest="280" Padding="10,8"
+                                        StrokeThickness="0" StrokeShape="RoundRectangle 14"
+                                        BackgroundColor="{Binding BubbleColor}">
+                                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                                        <!-- Fixed size: CollectionView recycling made per-bubble SizeChanged inconsistent -->
+                                        <Image Source="{Binding AttachmentIconSource}"
+                                               Aspect="AspectFit"
+                                               VerticalOptions="Center"
+                                               HorizontalOptions="Center"
+                                               WidthRequest="48" HeightRequest="48"
+                                               IsVisible="{Binding IsFile}" />
+                                        <VerticalStackLayout Grid.Column="1" Spacing="4">
+                                            <Label Text="{Binding TextBody}" TextColor="{Binding MessageColor}"
+                                                   LineBreakMode="WordWrap" IsVisible="{Binding ShowTextBody}" />
+                                            <VerticalStackLayout Spacing="2" IsVisible="{Binding IsFile}">
+                                                <Label Text="{Binding FileTitleText}" TextColor="{Binding MessageColor}"
+                                                       LineBreakMode="WordWrap" />
+                                                <Label Text="{Binding FileMetaText}" TextColor="{Binding MessageColor}"
+                                                       LineBreakMode="WordWrap" />
+                                            </VerticalStackLayout>
+                                            <HorizontalStackLayout Spacing="6" HorizontalOptions="End">
+                                                <Label Text="{Binding TimeLabel}" FontSize="10"
+                                                       TextColor="{DynamicResource MutedText}" />
+                                                <Label Text="{Binding DeliveryGlyph}" TextColor="{Binding DeliveryGlyphColor}"
+                                                       FontSize="11" IsVisible="{Binding ShowDelivery}" />
+                                            </HorizontalStackLayout>
                                         </VerticalStackLayout>
-                                        <HorizontalStackLayout Spacing="6" HorizontalOptions="End">
-                                            <Label Text="{Binding TimeLabel}" FontSize="10"
-                                                   TextColor="{DynamicResource MutedText}" />
-                                            <Label Text="{Binding DeliveryGlyph}" TextColor="{Binding DeliveryGlyphColor}"
-                                                   FontSize="11" IsVisible="{Binding ShowDelivery}" />
-                                        </HorizontalStackLayout>
-                                    </VerticalStackLayout>
-                                </Grid>
-                            </Border>
-                        </Grid>
-                    </DataTemplate>
-                </CollectionView.ItemTemplate>
-            </CollectionView>
+                                    </Grid>
+                                </Border>
+                            </Grid>
+                        </DataTemplate>
+                    </CollectionView.ItemTemplate>
+                </CollectionView>
+
+                <!-- Shown when the user scrolled up and a new message arrives (TRL-45). -->
+                <Border x:Name="ScrollToLatestButton"
+                        IsVisible="False"
+                        HorizontalOptions="End" VerticalOptions="End"
+                        Margin="0,0,14,12"
+                        Padding="14,8"
+                        StrokeThickness="0"
+                        StrokeShape="RoundRectangle 22"
+                        BackgroundColor="{DynamicResource OutgoingBubble}">
+                    <Border.Shadow>
+                        <Shadow Brush="#80000000" Offset="0,2" Radius="6" Opacity="0.45" />
+                    </Border.Shadow>
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnScrollToLatestClicked" />
+                    </Border.GestureRecognizers>
+                    <HorizontalStackLayout Spacing="6" VerticalOptions="Center">
+                        <Label Text="&#x2913;" FontSize="16" TextColor="{DynamicResource SentText}"
+                               VerticalOptions="Center" />
+                        <Label x:Name="ScrollToLatestLabel" FontSize="14" FontAttributes="Bold"
+                               TextColor="{DynamicResource SentText}" VerticalOptions="Center" />
+                    </HorizontalStackLayout>
+                </Border>
+            </Grid>
 
             <VerticalStackLayout Grid.Row="2" Margin="12,0" Spacing="2">
                 <Label x:Name="SessionStatusLabel" FontSize="12"
