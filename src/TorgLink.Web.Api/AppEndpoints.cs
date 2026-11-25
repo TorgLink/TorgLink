@@ -637,7 +637,7 @@ internal static class AppEndpoints
             return Results.BadRequest(new { error = "addchat.bad_port" });
         try
         {
-            _ = RsaKeySerializer.DeserializePublic(pub);
+            _ = IdentityKeySerializer.DeserializePublic(pub);
         }
         catch
         {
@@ -904,7 +904,7 @@ internal static class AppEndpoints
         if (NeedUser(auth) is { } deny)
             return deny;
         var u = auth.CurrentUser!;
-        var pub = RsaKeySerializer.SerializePublic(auth.GetCurrentPublicKey());
+        var pub = IdentityKeySerializer.SerializePublic(auth.GetCurrentPublicKey());
         var png = PeerQrService.EncodeQrPng(PeerQrService.BuildPayload(u, pub));
         return Results.Json(new { png = Convert.ToBase64String(png) });
     }
@@ -922,7 +922,7 @@ internal static class AppEndpoints
         if (NeedUser(auth) is { } deny)
             return deny;
         var u = auth.CurrentUser!;
-        var pub = RsaKeySerializer.SerializePublic(auth.GetCurrentPublicKey());
+        var pub = IdentityKeySerializer.SerializePublic(auth.GetCurrentPublicKey());
         var text = $"Network id: {u.NetworkIdShort}\nPublic key JSON:\n{pub}";
         return Results.Json(new { text });
     }
