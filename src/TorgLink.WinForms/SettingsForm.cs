@@ -204,6 +204,7 @@ public sealed partial class SettingsForm : AppForm
         _lan.Checked = _live.EnableUdpTransport;
         _shareRoutes.Checked = _live.AdvertisedPeerCapabilities.HasFlag(PresencePeerCapabilities.PeerSearch);
         _visibleForSearch.Checked = _live.VisibleForSearch;
+        _enableMlKem.Checked = _live.EnableMlKem;
         _hops.Value = Clamp(_live.MaxSearchHops, 1, 3);
         _attempts.Value = Clamp(_live.SendFailureSearchAttempts, 1, 20);
         _delayMs.Value = Clamp((decimal)_live.SendFailureRetryDelay.TotalMilliseconds, 0, 3_600_000);
@@ -242,6 +243,7 @@ public sealed partial class SettingsForm : AppForm
         _lan.Text = LocalizationUtils.GetStringByKey("settings.lan");
         _shareRoutes.Text = LocalizationUtils.GetStringByKey("routing.share_routes");
         _visibleForSearch.Text = LocalizationUtils.GetStringByKey("settings.visible_for_search");
+        _enableMlKem.Text = LocalizationUtils.GetStringByKey("settings.mlkem");
         _lblEconomy.Text = LocalizationUtils.GetStringByKey("settings.economy");
         _lblNoBle.Text = LocalizationUtils.GetStringByKey("settings.bluetooth") + " — n/a";
 
@@ -538,13 +540,15 @@ public sealed partial class SettingsForm : AppForm
                 cap |= PresencePeerCapabilities.PeerSearch;
             s.AdvertisedPeerCapabilities = cap;
             s.VisibleForSearch = _visibleForSearch.Checked;
+            s.EnableMlKem = _enableMlKem.Checked;
 
             await _store.SaveAsync(s).ConfigureAwait(false);
             RoutingSettingsLive.Overlay(_live, s);
             _sync.Manager.VisibleForSearch = s.VisibleForSearch;
             _ = _sync.ChangeVisibilityOnAllServersAsync(s.VisibleForSearch);
-            _logger.LogInformation("Settings saved: udp={Udp} quality={Quality} hops={Hops} visible={Visible}",
-                s.EnableUdpTransport, s.TrafficQuality, s.MaxSearchHops, s.VisibleForSearch);
+            _logger.LogInformation(
+                "Settings saved: udp={Udp} quality={Quality} hops={Hops} visible={Visible} mlkem={MlKem}",
+                s.EnableUdpTransport, s.TrafficQuality, s.MaxSearchHops, s.VisibleForSearch, s.EnableMlKem);
             UpdateProfileSummary();
             MessageBox.Show(this, LocalizationUtils.GetStringByKey("profile.saved"),
                 LocalizationUtils.GetStringByKey("settings.title"), MessageBoxButtons.OK,

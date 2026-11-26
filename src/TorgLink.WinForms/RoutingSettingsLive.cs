@@ -21,5 +21,7 @@ internal static class RoutingSettingsLive
         dest.AdvertisedPeerCapabilities = (src.AdvertisedPeerCapabilities | PresencePeerCapabilities.Chat)
                                         & PresencePeerCapabilities.AllDefined;
         dest.VisibleForSearch = src.VisibleForSearch;
+        dest.EnableMlKem = src.EnableMlKem;
+        ShortP2P.Crypto.MlKemCrypto.SetFeatureEnabled(dest.EnableMlKem);
     }
 }

@@ -135,6 +135,7 @@ internal static partial class StringCatalog
         ["settings.logs"] = "Logs",
         ["settings.about"] = "About",
         ["settings.logout"] = "Log out",
+        ["settings.mlkem"] = "Quantum encryption (ML-KEM) at session setup",
         ["settings.lora_mlkem_warning"] =
             "Over LoRa, only the classic session setup may be available (without ML-KEM).",
         ["settings.storage_mb"] = "Used {0:0.0} MB",

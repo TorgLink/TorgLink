@@ -145,6 +145,7 @@ public static partial class StringCatalog
         ["settings.logs"] = "Protokolle",
         ["settings.about"] = "Info",
         ["settings.logout"] = "Abmelden",
+        ["settings.mlkem"] = "Quantenverschlüsselung (ML-KEM) beim Sitzungsaufbau",
         ["settings.lora_mlkem_warning"] =
             "Über LoRa ist möglicherweise nur die klassische Sitzungsaushandlung verfügbar (ohne ML-KEM).",
         ["settings.storage_mb"] = "Belegt {0:0.0} MB",

@@ -145,6 +145,7 @@ public static partial class StringCatalog
         ["settings.logs"] = "Registro",
         ["settings.about"] = "Acerca de",
         ["settings.logout"] = "Cerrar sesión",
+        ["settings.mlkem"] = "Cifrado cuantico (ML-KEM) al iniciar la sesion",
         ["settings.lora_mlkem_warning"] =
             "Por LoRa, puede estar disponible solo la negociación de sesión clásica (sin ML-KEM).",
         ["settings.storage_mb"] = "Usado {0:0.0} MB",

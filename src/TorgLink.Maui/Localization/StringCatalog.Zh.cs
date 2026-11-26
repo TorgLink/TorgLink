@@ -131,6 +131,7 @@ internal static partial class StringCatalog
         ["settings.logs"] = "日志",
         ["settings.about"] = "关于",
         ["settings.logout"] = "退出登录",
+        ["settings.mlkem"] = "会话建立时的量子加密（ML-KEM）",
         ["settings.lora_mlkem_warning"] =
             "通过 LoRa 时，可能仅支持经典会话协商（不含 ML-KEM）。",
         ["settings.storage_mb"] = "已用 {0:0.0} MB",
