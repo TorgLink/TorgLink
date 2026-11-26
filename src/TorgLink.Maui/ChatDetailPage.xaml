@@ -194,14 +194,21 @@
                        LineBreakMode="WordWrap" FontSize="12" />
             </VerticalStackLayout>
 
-            <Grid Grid.Row="3" Padding="8,6,8,10" RowDefinitions="Auto,Auto" RowSpacing="6"
+            <Grid Grid.Row="3" Padding="8,6,8,10" RowDefinitions="Auto,Auto,Auto" RowSpacing="6"
                   BackgroundColor="{DynamicResource Surface}">
-                <Border Stroke="{DynamicResource Hairline}" StrokeThickness="1"
+                <HorizontalStackLayout x:Name="VoiceRecordingBar" IsVisible="False" Spacing="8"
+                                       VerticalOptions="Center" Padding="4,0">
+                    <BoxView WidthRequest="10" HeightRequest="10" CornerRadius="5"
+                             Color="{DynamicResource Danger}" VerticalOptions="Center" />
+                    <Label x:Name="VoiceRecordingLabel" FontSize="13" FontAttributes="Bold"
+                           TextColor="{DynamicResource Danger}" VerticalOptions="Center" />
+                </HorizontalStackLayout>
+                <Border Grid.Row="1" Stroke="{DynamicResource Hairline}" StrokeThickness="1"
                         StrokeShape="RoundRectangle 18" Padding="10,0" BackgroundColor="{DynamicResource FieldBackground}">
                     <Entry x:Name="MessageEntry" MaxLength="32768"
                            BackgroundColor="Transparent" FontSize="15" />
                 </Border>
-                <Grid Grid.Row="1" ColumnDefinitions="Auto,Auto,Auto,Auto,*,48" ColumnSpacing="4">
+                <Grid Grid.Row="2" ColumnDefinitions="Auto,Auto,Auto,Auto,*,48" ColumnSpacing="4">
                     <Button x:Name="VoiceButton" Text="&#x1F3A4;" FontSize="16" Padding="0" WidthRequest="40" HeightRequest="40"
                             BackgroundColor="Transparent" TextColor="{DynamicResource MidnightBlue}" Clicked="OnVoiceClicked" />
                     <Button Grid.Column="1" Text="&#x1F4F7;" FontSize="16" Padding="0" WidthRequest="40" HeightRequest="40"

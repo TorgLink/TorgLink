@@ -357,5 +357,6 @@ internal static partial class StringCatalog
         ["chat.delivery_issue"] = "Problème de livraison du message en cours.",
         ["chat.mic_denied"] = "Pas d’autorisation pour enregistrer l’audio.",
         ["chat.voice_file_fail"] = "Impossible d’obtenir le fichier vocal enregistré.",
+        ["chat.voice_recording"] = "Enregistrement… {0}s",
     };
 }

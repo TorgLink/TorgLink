@@ -362,5 +362,6 @@ internal static partial class StringCatalog
         ["chat.delivery_issue"] = "Проблема с доставкой текущего сообщения.",
         ["chat.mic_denied"] = "Нет разрешения на запись звука.",
         ["chat.voice_file_fail"] = "Не удалось получить записанный голосовой файл.",
+        ["chat.voice_recording"] = "Запись… {0} с",
     };
 }

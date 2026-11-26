@@ -354,5 +354,6 @@ internal static partial class StringCatalog
         ["chat.delivery_issue"] = "当前消息投递出现问题。",
         ["chat.mic_denied"] = "没有录音权限。",
         ["chat.voice_file_fail"] = "无法获取已录制的语音文件。",
+        ["chat.voice_recording"] = "录音中… {0}s",
     };
 }

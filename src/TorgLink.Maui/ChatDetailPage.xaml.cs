@@ -81,6 +81,8 @@ public partial class ChatDetailPage : ContentPage
     /// <summary>Ignores Scrolled while programmatic ScrollTo runs (avoids clearing stick).</summary>
     private bool _ignoreScrollForStick;
     private VoiceRecordingSession? _voice;
+    private IDispatcherTimer? _voiceRecordingTimer;
+    private DateTime _voiceRecordingStartedUtc;
     private readonly Dictionary<int, string> _attachmentDurationLabels = new();
     private readonly ConcurrentDictionary<int, byte> _binaryDownloadsInFlight = new();
     private bool _hooksAttached;
@@ -1358,8 +1360,14 @@ public partial class ChatDetailPage : ContentPage
     {
         var user = _auth.CurrentUser;
         var chat = _chat;
-        if (user == null || chat == null || EnsureP2pSessionAttached(user, chat) == null)
+        if (user == null || chat == null)
             return;
+
+        if (EnsureP2pSessionAttached(user, chat) == null)
+        {
+            ShowDeliveryIssue(LocalizationUtils.GetStringByKey("error"));
+            return;
+        }
 
         if (_voice is { IsRecording: true })
         {
@@ -1402,6 +1410,7 @@ public partial class ChatDetailPage : ContentPage
             await _voice.StartAsync(MediaEconomy.SpeechBitrate(_p2p)).ConfigureAwait(true);
             VoiceButton.Text = "■";
             VoiceButton.TextColor = Colors.Red;
+            BeginVoiceRecordingIndicator();
         }
         catch (Exception ex)
         {
@@ -1413,6 +1422,7 @@ public partial class ChatDetailPage : ContentPage
 
     private async Task StopVoiceRecordingAndSendAsync()
     {
+        EndVoiceRecordingIndicator();
         ResetVoiceButton();
         var voice = _voice;
         _voice = null;
@@ -1463,6 +1473,7 @@ public partial class ChatDetailPage : ContentPage
         finally
         {
             _voice = null;
+            EndVoiceRecordingIndicator();
             ResetVoiceButton();
         }
     }
@@ -1471,6 +1482,40 @@ public partial class ChatDetailPage : ContentPage
     {
         VoiceButton.Text = "🎤";
         VoiceButton.TextColor = TorgLinkTheme.Text;
+    }
+
+    private void BeginVoiceRecordingIndicator()
+    {
+        _voiceRecordingStartedUtc = DateTime.UtcNow;
+        VoiceRecordingBar.IsVisible = true;
+        UpdateVoiceRecordingLabel();
+        _voiceRecordingTimer?.Stop();
+        _voiceRecordingTimer = Dispatcher.CreateTimer();
+        _voiceRecordingTimer.Interval = TimeSpan.FromSeconds(1);
+        _voiceRecordingTimer.Tick += OnVoiceRecordingTimerTick;
+        _voiceRecordingTimer.Start();
+    }
+
+    private void EndVoiceRecordingIndicator()
+    {
+        if (_voiceRecordingTimer != null)
+        {
+            _voiceRecordingTimer.Tick -= OnVoiceRecordingTimerTick;
+            _voiceRecordingTimer.Stop();
+            _voiceRecordingTimer = null;
+        }
+
+        VoiceRecordingBar.IsVisible = false;
+        VoiceRecordingLabel.Text = string.Empty;
+    }
+
+    private void OnVoiceRecordingTimerTick(object? sender, EventArgs e) => UpdateVoiceRecordingLabel();
+
+    private void UpdateVoiceRecordingLabel()
+    {
+        var seconds = Math.Max(0, (int)(DateTime.UtcNow - _voiceRecordingStartedUtc).TotalSeconds);
+        VoiceRecordingLabel.Text =
+            LocalizationUtils.GetStringByKeyWithFormat("chat.voice_recording", seconds);
     }
 
     private async void OnMessageRowTapped(object? sender, TappedEventArgs e)
