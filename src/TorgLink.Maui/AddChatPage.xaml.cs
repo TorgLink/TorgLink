@@ -247,7 +247,7 @@ public partial class AddChatPage : ContentPage
 
         try
         {
-            _ = RsaKeySerializer.DeserializePublic(pub);
+            _ = IdentityKeySerializer.DeserializePublic(pub);
         }
         catch (Exception ex)
         {

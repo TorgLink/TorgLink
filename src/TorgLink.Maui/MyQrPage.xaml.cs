@@ -33,7 +33,7 @@ public partial class MyQrPage : ContentPage
             return;
         }
 
-        var pub = RsaKeySerializer.SerializePublic(_auth.GetCurrentPublicKey());
+        var pub = IdentityKeySerializer.SerializePublic(_auth.GetCurrentPublicKey());
         _ = RenderQrAsync(u, pub);
     }
 

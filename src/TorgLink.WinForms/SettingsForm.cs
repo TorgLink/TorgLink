@@ -600,7 +600,7 @@ public sealed partial class SettingsForm : AppForm
             return;
         try
         {
-            var pub = RsaKeySerializer.SerializePublic(_auth.GetCurrentPublicKey());
+            var pub = IdentityKeySerializer.SerializePublic(_auth.GetCurrentPublicKey());
             var text = $"Network id: {u.NetworkIdShort}\nPublic key JSON:\n{pub}";
             Clipboard.SetText(text);
             MessageBox.Show(this, LocalizationUtils.GetStringByKey("copied.keys"),

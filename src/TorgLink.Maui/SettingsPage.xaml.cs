@@ -137,11 +137,19 @@ public partial class SettingsPage : ContentPage
             : s.Enabled
                 ? "LoRa transport: not running (check COM / jurisdiction)"
                 : "LoRa transport: off";
+        UpdateLoRaMlKemWarning();
     }
 
     private void OnLoRaToggled(object? sender, ToggledEventArgs e)
     {
         // Applied on Save.
+        UpdateLoRaMlKemWarning();
+    }
+
+    private void UpdateLoRaMlKemWarning()
+    {
+        LoRaMlKemWarningLabel.Text = LocalizationUtils.GetStringByKey("settings.lora_mlkem_warning");
+        LoRaMlKemWarningLabel.IsVisible = LoRaSwitch.IsToggled;
     }
 
     private void OnLoRaJurisdictionChanged(object? sender, EventArgs e)
@@ -237,6 +245,7 @@ public partial class SettingsPage : ContentPage
         BlacklistButton.Text = LocalizationUtils.GetStringByKey("blacklist.title");
         AboutButton.Text = LocalizationUtils.GetStringByKey("settings.about");
         LogoutButton.Text = LocalizationUtils.GetStringByKey("settings.logout");
+        UpdateLoRaMlKemWarning();
         var warn = LanguageService.TranslationWarning(LanguageService.Current);
         LanguageWarningLabel.Text = warn;
         LanguageWarningLabel.IsVisible = LanguageService.ShowTranslationWarning;

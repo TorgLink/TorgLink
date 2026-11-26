@@ -135,6 +135,8 @@ internal static partial class StringCatalog
         ["settings.logs"] = "Logs",
         ["settings.about"] = "About",
         ["settings.logout"] = "Log out",
+        ["settings.lora_mlkem_warning"] =
+            "Over LoRa, only the classic session setup may be available (without ML-KEM).",
         ["settings.storage_mb"] = "Used {0:0.0} MB",
         ["settings.storage_gb"] = "Used {0:0.0} GB",
         ["settings.about_body"] = "Mesh messenger.\nVersion 0.1\nAndroid 5.0 (API 21)+",

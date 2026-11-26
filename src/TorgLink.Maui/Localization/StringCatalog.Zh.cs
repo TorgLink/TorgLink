@@ -131,6 +131,8 @@ internal static partial class StringCatalog
         ["settings.logs"] = "日志",
         ["settings.about"] = "关于",
         ["settings.logout"] = "退出登录",
+        ["settings.lora_mlkem_warning"] =
+            "通过 LoRa 时，可能仅支持经典会话协商（不含 ML-KEM）。",
         ["settings.storage_mb"] = "已用 {0:0.0} MB",
         ["settings.storage_gb"] = "已用 {0:0.0} GB",
         ["settings.about_body"] = "Mesh 信使。\n版本 0.1\nAndroid 5.0 (API 21)+",

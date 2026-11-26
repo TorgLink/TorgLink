@@ -73,6 +73,9 @@
                     <Switch x:Name="LoRaSwitch" Grid.Column="1" OnColor="{DynamicResource Accent}"
                             Toggled="OnLoRaToggled" />
                 </Grid>
+                <Label x:Name="LoRaMlKemWarningLabel" FontSize="12" TextColor="#FF9500"
+                       LineBreakMode="WordWrap" IsVisible="False"
+                       Text="Over LoRa, only the classic session setup may be available (without ML-KEM)." />
                 <Picker x:Name="LoRaComPortPicker" Title="COM port"
                         BackgroundColor="{DynamicResource PageBackground}"
                         TextColor="{DynamicResource MidnightBlue}" />

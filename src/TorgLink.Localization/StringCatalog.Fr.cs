@@ -145,6 +145,8 @@ public static partial class StringCatalog
         ["settings.logs"] = "Journaux",
         ["settings.about"] = "À propos",
         ["settings.logout"] = "Se déconnecter",
+        ["settings.lora_mlkem_warning"] =
+            "Sur LoRa, seule la négociation de session classique peut être disponible (sans ML-KEM).",
         ["settings.storage_mb"] = "Utilisé {0:0.0} Mo",
         ["settings.storage_gb"] = "Utilisé {0:0.0} Go",
         ["settings.about_body"] = "Messagerie mesh.\nVersion 0.2.0\nAndroid 5.0 (API 21)+",

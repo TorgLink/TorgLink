@@ -39,7 +39,7 @@ internal static class ProfileShare
         var u = auth.CurrentUser;
         if (u == null)
             return;
-        var pub = RsaKeySerializer.SerializePublic(auth.GetCurrentPublicKey());
+        var pub = IdentityKeySerializer.SerializePublic(auth.GetCurrentPublicKey());
         var text = $"Network id: {u.NetworkIdShort}\nPublic key JSON:\n{pub}";
         await Clipboard.Default.SetTextAsync(text).ConfigureAwait(true);
         await host.DisplayAlert(LocalizationUtils.GetStringByKey("copied"), LocalizationUtils.GetStringByKey("copied.keys"), LocalizationUtils.GetStringByKey("ok")).ConfigureAwait(true);
