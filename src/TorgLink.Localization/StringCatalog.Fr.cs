@@ -228,6 +228,7 @@ public static partial class StringCatalog
         ["chat.state.tap_download"] = "appuyer pour télécharger",
         ["chat.state.tap_play"] = "appuyer pour lire",
         ["chat.state.tap_row"] = "appuyer sur la ligne — Télécharger",
+        ["chat.scroll_new"] = "Nouveau",
         ["chat.kb"] = "{0} Ko",
         ["image.title"] = "Image",
         ["copied"] = "Copié",
