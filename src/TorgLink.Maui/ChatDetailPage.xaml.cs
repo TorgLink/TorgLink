@@ -435,6 +435,8 @@ public partial class ChatDetailPage : ContentPage
         _p2p.LocalScan.ClientsChanged += OnPeerLanPresenceChanged;
         _repo.PeerPublicKeyChanged -= OnPeerPublicKeyChanged;
         _repo.PeerPublicKeyChanged += OnPeerPublicKeyChanged;
+        _repo.PeerKeyChangeProposed -= OnPeerKeyChangeProposed;
+        _repo.PeerKeyChangeProposed += OnPeerKeyChangeProposed;
         _repo.ChatMessageAppended -= OnChatMessageAppended;
         _repo.ChatMessageAppended += OnChatMessageAppended;
         _repo.ChatMessageDeliveryChanged -= OnChatMessageDeliveryChanged;
@@ -477,6 +479,7 @@ public partial class ChatDetailPage : ContentPage
             ActiveChatTracker.Clear(_chat.Id);
         _p2p.LocalScan.ClientsChanged -= OnPeerLanPresenceChanged;
         _repo.PeerPublicKeyChanged -= OnPeerPublicKeyChanged;
+        _repo.PeerKeyChangeProposed -= OnPeerKeyChangeProposed;
         _repo.ChatMessageAppended -= OnChatMessageAppended;
         _repo.ChatMessageDeliveryChanged -= OnChatMessageDeliveryChanged;
         _messengerServers.FailoverCompleted -= OnMessengerServerFailover;
@@ -616,6 +619,24 @@ public partial class ChatDetailPage : ContentPage
                 LocalizationUtils.GetStringByKey("safety.key_change_title"),
                 LocalizationUtils.GetStringByKeyWithFormat("safety.key_change_body", e.PeerNickname, e.PreviousSafetyNumber, e.NewSafetyNumber),
                 LocalizationUtils.GetStringByKey("ok")).ConfigureAwait(true);
+        });
+    }
+
+    private void OnPeerKeyChangeProposed(object? sender, PeerKeyChangeProposedEventArgs e)
+    {
+        if (e.ChatId != ChatId)
+            return;
+        MainThread.BeginInvokeOnMainThread(async () =>
+        {
+            var accept = await DisplayAlert(
+                LocalizationUtils.GetStringByKey("safety.key_change_title"),
+                PeerSafetyDisplay.FormatKeyChangeProposal(e),
+                LocalizationUtils.GetStringByKey("ok"),
+                LocalizationUtils.GetStringByKey("cancel")).ConfigureAwait(true);
+            if (accept)
+                await _repo.AcceptPendingPeerKeyChangeAsync(e.ChatId).ConfigureAwait(true);
+            else
+                _repo.RejectPendingPeerKeyChange(e.ChatId);
         });
     }
 

@@ -2,6 +2,7 @@ using TorgLink.Maui.Services;
 using Microsoft.Extensions.Logging;
 using ShortP2P.Auth;
 using ShortP2P.Client.ProfileBackup;
+using ShortP2P.Client.Services;
 using TorgLink.Localization;
 
 namespace TorgLink.Maui;
@@ -72,10 +73,25 @@ public partial class LoginPage : ContentPage
         await GoToChatsAsync().ConfigureAwait(true);
     }
 
-    private Task GoToChatsAsync()
+    private async Task GoToChatsAsync()
     {
+        try
+        {
+            var chats = MauiProgram.Services.GetRequiredService<ChatRepository>();
+            var migration = await IdentityMigrationApplier.ApplyPendingAsync(_auth, chats, _logger)
+                .ConfigureAwait(true);
+            if (migration != null)
+                await DisplayAlert(
+                    LocalizationUtils.GetStringByKey("ok"),
+                    migration,
+                    LocalizationUtils.GetStringByKey("ok")).ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Identity migration after login");
+        }
+
         Application.Current!.MainPage = MauiProgram.Services.GetRequiredService<AppShell>();
-        return Task.CompletedTask;
     }
 }
 
