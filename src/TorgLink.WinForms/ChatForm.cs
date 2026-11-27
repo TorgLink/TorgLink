@@ -342,6 +342,8 @@ public sealed partial class ChatForm : AppForm
         }
 
         var label = string.IsNullOrWhiteSpace(_chat.PeerNickname) ? id : _chat.PeerNickname.Trim();
+        if (_chat.MlKemSessionVerified || (_p2pSession?.IsMlKemSession ?? false))
+            label += " ⚛️";
         var bodyKey = _chat.IsBot ? "blacklist.add_body_bot" : "blacklist.add_body";
         var confirm = MessageBox.Show(
             this,
@@ -800,7 +802,8 @@ public sealed partial class ChatForm : AppForm
             : null;
         var nameFont = boldFont ?? baseFont;
         var nameBounds = new Rectangle(e.Bounds.X + 6, e.Bounds.Y + 2, e.Bounds.Width - 10, nameFont.Height);
-        TextRenderer.DrawText(e.Graphics, row.Chat.PeerNickname, nameFont, nameBounds, e.ForeColor,
+        var sideName = row.Chat.MlKemSessionVerified ? row.Chat.PeerNickname + " ⚛️" : row.Chat.PeerNickname;
+        TextRenderer.DrawText(e.Graphics, sideName, nameFont, nameBounds, e.ForeColor,
             TextFormatFlags.Left | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
 
         if (!string.IsNullOrEmpty(row.Preview))

@@ -96,11 +96,15 @@ public partial class SettingsPage : ContentPage
         LanSwitch.IsToggled = _p2p.Settings.EnableUdpTransport;
         RoutingSwitch.IsToggled = _p2p.Settings.AdvertisedPeerCapabilities.HasFlag(PresencePeerCapabilities.PeerSearch);
         VisibleForSearchSwitch.IsToggled = _p2p.Settings.VisibleForSearch;
+        MlKemSwitch.IsToggled = _p2p.Settings.EnableMlKem;
         _suppressToggle = false;
         BluetoothHint.Text = BluetoothSwitch.IsToggled ? LocalizationUtils.GetStringByKey("on") : LocalizationUtils.GetStringByKey("off");
         LanHint.Text = LanSwitch.IsToggled ? LocalizationUtils.GetStringByKey("on") : LocalizationUtils.GetStringByKey("off");
         RoutingHint.Text = RoutingSwitch.IsToggled ? LocalizationUtils.GetStringByKey("on") : LocalizationUtils.GetStringByKey("off");
         VisibleForSearchHint.Text = VisibleForSearchSwitch.IsToggled
+            ? LocalizationUtils.GetStringByKey("on")
+            : LocalizationUtils.GetStringByKey("off");
+        MlKemHint.Text = MlKemSwitch.IsToggled
             ? LocalizationUtils.GetStringByKey("on")
             : LocalizationUtils.GetStringByKey("off");
         EconomyHint.Text = MediaEconomy.Hint(_p2p.Settings.TrafficQuality);
@@ -137,11 +141,19 @@ public partial class SettingsPage : ContentPage
             : s.Enabled
                 ? "LoRa transport: not running (check COM / jurisdiction)"
                 : "LoRa transport: off";
+        UpdateLoRaMlKemWarning();
     }
 
     private void OnLoRaToggled(object? sender, ToggledEventArgs e)
     {
         // Applied on Save.
+        UpdateLoRaMlKemWarning();
+    }
+
+    private void UpdateLoRaMlKemWarning()
+    {
+        LoRaMlKemWarningLabel.Text = LocalizationUtils.GetStringByKey("settings.lora_mlkem_warning");
+        LoRaMlKemWarningLabel.IsVisible = LoRaSwitch.IsToggled;
     }
 
     private void OnLoRaJurisdictionChanged(object? sender, EventArgs e)
@@ -224,6 +236,7 @@ public partial class SettingsPage : ContentPage
         LanLabel.Text = LocalizationUtils.GetStringByKey("settings.lan");
         RoutingLabel.Text = LocalizationUtils.GetStringByKey("settings.routing");
         VisibleForSearchLabel.Text = LocalizationUtils.GetStringByKey("settings.visible_for_search");
+        MlKemLabel.Text = LocalizationUtils.GetStringByKey("settings.mlkem");
         DatabaseLabel.Text = LocalizationUtils.GetStringByKey("settings.database");
         DatabaseHint.Text = LocalizationUtils.GetStringByKey("settings.database_hint");
         EconomyLabel.Text = LocalizationUtils.GetStringByKey("settings.economy");
@@ -237,6 +250,7 @@ public partial class SettingsPage : ContentPage
         BlacklistButton.Text = LocalizationUtils.GetStringByKey("blacklist.title");
         AboutButton.Text = LocalizationUtils.GetStringByKey("settings.about");
         LogoutButton.Text = LocalizationUtils.GetStringByKey("settings.logout");
+        UpdateLoRaMlKemWarning();
         var warn = LanguageService.TranslationWarning(LanguageService.Current);
         LanguageWarningLabel.Text = warn;
         LanguageWarningLabel.IsVisible = LanguageService.ShowTranslationWarning;
@@ -499,6 +513,16 @@ public partial class SettingsPage : ContentPage
         await SaveAsync(s => s.VisibleForSearch = e.Value).ConfigureAwait(true);
     }
 
+    private async void OnMlKemToggled(object? sender, ToggledEventArgs e)
+    {
+        MlKemHint.Text = e.Value
+            ? LocalizationUtils.GetStringByKey("on")
+            : LocalizationUtils.GetStringByKey("off");
+        if (_suppressToggle)
+            return;
+        await SaveAsync(s => s.EnableMlKem = e.Value).ConfigureAwait(true);
+    }
+
     private async Task<bool> SaveAsync(Action<P2pRoutingSettings> mutate)
     {
         try
@@ -511,10 +535,14 @@ public partial class SettingsPage : ContentPage
             AppLog.SettingChanged("AdvertisedPeerCapabilities", s.AdvertisedPeerCapabilities);
             AppLog.SettingChanged("TrafficQuality", s.TrafficQuality);
             AppLog.SettingChanged("VisibleForSearch", s.VisibleForSearch);
+            AppLog.SettingChanged("EnableMlKem", s.EnableMlKem);
             _p2p.Settings.EnableUdpTransport = s.EnableUdpTransport;
             _p2p.Settings.EnableBluetoothTransport = s.EnableBluetoothTransport;
             _p2p.Settings.AdvertisedPeerCapabilities = s.AdvertisedPeerCapabilities | PresencePeerCapabilities.Chat;
             _p2p.Settings.VisibleForSearch = s.VisibleForSearch;
+            _p2p.Settings.EnableMlKem = s.EnableMlKem;
+            ShortP2P.Crypto.MlKemCrypto.SetFeatureEnabled(s.EnableMlKem);
+            _p2p.NotifyMlKemSettingChanged();
             MediaEconomy.Apply(_p2p, s.TrafficQuality);
             _bluetoothTransport.ApplySettings(s);
             Header.Bind(_auth.CurrentUser, _p2p);
