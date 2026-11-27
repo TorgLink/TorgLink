@@ -13,3 +13,6 @@
 [submodule ".cursor/TorgLink.Rules"]
 	path = .cursor/TorgLink.Rules
 	url = https://github.com/TorgLink/TorgLink.Rules.git
+[submodule ".cursor/TorgLink.CI-CD"]
+	path = .cursor/TorgLink.CI-CD
+	url = https://github.com/TorgLink/TorgLink.CI-CD.git
