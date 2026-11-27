@@ -542,6 +542,7 @@ public partial class SettingsPage : ContentPage
             _p2p.Settings.VisibleForSearch = s.VisibleForSearch;
             _p2p.Settings.EnableMlKem = s.EnableMlKem;
             ShortP2P.Crypto.MlKemCrypto.SetFeatureEnabled(s.EnableMlKem);
+            _p2p.NotifyMlKemSettingChanged();
             MediaEconomy.Apply(_p2p, s.TrafficQuality);
             _bluetoothTransport.ApplySettings(s);
             Header.Bind(_auth.CurrentUser, _p2p);

@@ -44,7 +44,7 @@
                                              StrokeThickness="2" IsVisible="{Binding IsPeerOnline}" />
                                 </Grid>
                                 <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
-                                    <Label Text="{Binding PeerNickname}" FontSize="16" FontAttributes="Bold"
+                                    <Label Text="{Binding DisplayName}" FontSize="16" FontAttributes="Bold"
                                            TextColor="{DynamicResource MidnightBlue}" LineBreakMode="TailTruncation" />
                                     <Label Text="{Binding LastPreview}" FontSize="12"
                                            TextColor="{DynamicResource MutedText}" LineBreakMode="TailTruncation" />

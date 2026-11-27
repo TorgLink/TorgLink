@@ -552,6 +552,9 @@ public sealed class ChatListRowVm : INotifyPropertyChanged
 
     public ChatEntity Chat { get; }
     public string PeerNickname => Chat.PeerNickname;
+    /// <summary>Nickname with quantum mark when <see cref="ChatEntity.MlKemSessionVerified"/>.</summary>
+    public string DisplayName =>
+        Chat.MlKemSessionVerified ? Chat.PeerNickname + " ⚛️" : Chat.PeerNickname;
     public string PeerNetworkIdShort => Chat.PeerNetworkIdShort;
     public string Initials => _initials;
     public Color AvatarColor => _avatarColor;
@@ -608,12 +611,16 @@ public sealed class ChatListRowVm : INotifyPropertyChanged
         }
     }
 
+    public void NotifyDisplayNameChanged() =>
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(DisplayName)));
+
     public void CopyFrom(ChatListRowVm other)
     {
         if (ReferenceEquals(this, other))
             return;
         UpdateLastPreview(other._lastPreview, other._timeLabel, other._deliveryGlyph, other._deliveryGlyphColor,
             other._showDelivery);
+        NotifyDisplayNameChanged();
         ApplyPeerVisuals();
         if (!ReferenceEquals(_avatarImage, other._avatarImage) || _avatarFingerprint != other._avatarFingerprint)
         {
