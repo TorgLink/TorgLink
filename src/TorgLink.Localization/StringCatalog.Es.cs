@@ -145,6 +145,9 @@ public static partial class StringCatalog
         ["settings.logs"] = "Registro",
         ["settings.about"] = "Acerca de",
         ["settings.logout"] = "Cerrar sesión",
+        ["settings.mlkem"] = "Cifrado cuantico (ML-KEM) al iniciar la sesion",
+        ["settings.lora_mlkem_warning"] =
+            "Por LoRa, puede estar disponible solo la negociación de sesión clásica (sin ML-KEM).",
         ["settings.storage_mb"] = "Usado {0:0.0} MB",
         ["settings.storage_gb"] = "Usado {0:0.0} GB",
         ["settings.about_body"] = "Mensajero mesh.\nVersión 0.2.0\nAndroid 5.0 (API 21)+",
@@ -225,6 +228,7 @@ public static partial class StringCatalog
         ["chat.state.tap_download"] = "pulse — descargar",
         ["chat.state.tap_play"] = "pulse — escuchar",
         ["chat.state.tap_row"] = "pulse la fila — Descargar",
+        ["chat.scroll_new"] = "Nuevos",
         ["chat.kb"] = "{0} KB",
         ["image.title"] = "Imagen",
         ["copied"] = "Copiado",

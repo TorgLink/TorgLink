@@ -131,6 +131,9 @@ internal static partial class StringCatalog
         ["settings.logs"] = "Journaux",
         ["settings.about"] = "À propos",
         ["settings.logout"] = "Se déconnecter",
+        ["settings.mlkem"] = "Chiffrement quantique (ML-KEM) a l'etablissement de session",
+        ["settings.lora_mlkem_warning"] =
+            "Sur LoRa, seule la négociation de session classique peut être disponible (sans ML-KEM).",
         ["settings.storage_mb"] = "Utilisé {0:0.0} Mo",
         ["settings.storage_gb"] = "Utilisé {0:0.0} Go",
         ["settings.about_body"] = "Messagerie mesh.\nVersion 0.1\nAndroid 5.0 (API 21)+",
@@ -206,6 +209,7 @@ internal static partial class StringCatalog
         ["chat.state.tap_download"] = "appuyer pour télécharger",
         ["chat.state.tap_play"] = "appuyer pour lire",
         ["chat.state.tap_row"] = "appuyer sur la ligne — Télécharger",
+        ["chat.scroll_new"] = "Nouveau",
         ["chat.kb"] = "{0} Ko",
         ["image.title"] = "Image",
         ["copied"] = "Copié",
@@ -353,5 +357,6 @@ internal static partial class StringCatalog
         ["chat.delivery_issue"] = "Problème de livraison du message en cours.",
         ["chat.mic_denied"] = "Pas d’autorisation pour enregistrer l’audio.",
         ["chat.voice_file_fail"] = "Impossible d’obtenir le fichier vocal enregistré.",
+        ["chat.voice_recording"] = "Enregistrement… {0}s",
     };
 }

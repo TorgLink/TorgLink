@@ -131,6 +131,9 @@ internal static partial class StringCatalog
         ["settings.logs"] = "Protokolle",
         ["settings.about"] = "Info",
         ["settings.logout"] = "Abmelden",
+        ["settings.mlkem"] = "Quantenverschlüsselung (ML-KEM) beim Sitzungsaufbau",
+        ["settings.lora_mlkem_warning"] =
+            "Über LoRa ist möglicherweise nur die klassische Sitzungsaushandlung verfügbar (ohne ML-KEM).",
         ["settings.storage_mb"] = "Belegt {0:0.0} MB",
         ["settings.storage_gb"] = "Belegt {0:0.0} GB",
         ["settings.about_body"] = "Mesh-Messenger.\nVersion 0.1\nAndroid 5.0 (API 21)+",
@@ -206,6 +209,7 @@ internal static partial class StringCatalog
         ["chat.state.tap_download"] = "tippen zum Herunterladen",
         ["chat.state.tap_play"] = "tippen zum Abspielen",
         ["chat.state.tap_row"] = "Zeile tippen — Download",
+        ["chat.scroll_new"] = "Neu",
         ["chat.kb"] = "{0} KB",
         ["image.title"] = "Bild",
         ["copied"] = "Kopiert",
@@ -353,5 +357,6 @@ internal static partial class StringCatalog
         ["chat.delivery_issue"] = "Problem bei der Zustellung der aktuellen Nachricht.",
         ["chat.mic_denied"] = "Keine Berechtigung zur Audioaufnahme.",
         ["chat.voice_file_fail"] = "Aufgenommene Sprachdatei konnte nicht abgerufen werden.",
+        ["chat.voice_recording"] = "Aufnahme… {0}s",
     };
 }

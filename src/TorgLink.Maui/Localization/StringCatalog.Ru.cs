@@ -135,6 +135,9 @@ internal static partial class StringCatalog
         ["settings.logs"] = "Журнал",
         ["settings.about"] = "О приложении",
         ["settings.logout"] = "Разлогиниться",
+        ["settings.mlkem"] = "Квантовое шифрование (ML-KEM) при установке сессии",
+        ["settings.lora_mlkem_warning"] =
+            "При связи по LoRa может быть доступно только классическое согласование сессии (без ML-KEM).",
         ["settings.storage_mb"] = "Использовано {0:0.0} МБ",
         ["settings.storage_gb"] = "Использовано {0:0.0} ГБ",
         ["settings.about_body"] = "Mesh-мессенджер.\nВерсия 0.1\nAndroid 5.0 (API 21)+",
@@ -211,6 +214,7 @@ internal static partial class StringCatalog
         ["chat.state.tap_download"] = "нажмите — скачать",
         ["chat.state.tap_play"] = "нажмите — слушать",
         ["chat.state.tap_row"] = "нажмите строку — Скачать",
+        ["chat.scroll_new"] = "Новые",
         ["chat.kb"] = "{0} КБ",
         ["image.title"] = "Изображение",
         ["copied"] = "Скопировано",
@@ -358,5 +362,6 @@ internal static partial class StringCatalog
         ["chat.delivery_issue"] = "Проблема с доставкой текущего сообщения.",
         ["chat.mic_denied"] = "Нет разрешения на запись звука.",
         ["chat.voice_file_fail"] = "Не удалось получить записанный голосовой файл.",
+        ["chat.voice_recording"] = "Запись… {0} с",
     };
 }

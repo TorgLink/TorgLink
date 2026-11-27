@@ -16,6 +16,9 @@ public partial class ChatDetailPage
         var session = _p2pSession;
         if (session == null)
             return;
+        // Own send: stick to bottom and clear the New affordance.
+        _stickToBottom = true;
+        SetScrollToLatestVisible(false);
         var mode = MediaEconomy.Mode(_p2p);
         _ = RunBinarySendAsync(session, mode, work);
     }

@@ -182,7 +182,7 @@ public partial class NetworkPage : ContentPage
             return;
         try
         {
-            var pub = RsaKeySerializer.SerializePublic(_auth.GetCurrentPublicKey());
+            var pub = IdentityKeySerializer.SerializePublic(_auth.GetCurrentPublicKey());
             // InviteHostsBuilder → NIC enum / public IP — blocking; off UI thread.
             var png = await Task.Run(() => PeerQrService.EncodeQrPng(PeerQrService.BuildPayload(u, pub)))
                 .ConfigureAwait(true);
