@@ -10,3 +10,6 @@
 	path = ShortP2P.Vocabulary
 	url = https://github.com/TorgLink/ShortP2P.Vocabulary.git
 	branch = dev/0.2
+[submodule ".cursor/TorgLink.Rules"]
+	path = .cursor/TorgLink.Rules
+	url = https://github.com/TorgLink/TorgLink.Rules.git
