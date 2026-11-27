@@ -81,6 +81,8 @@ public partial class ChatDetailPage : ContentPage
     /// <summary>Ignores Scrolled while programmatic ScrollTo runs (avoids clearing stick).</summary>
     private bool _ignoreScrollForStick;
     private VoiceRecordingSession? _voice;
+    private IDispatcherTimer? _voiceRecordingTimer;
+    private DateTime _voiceRecordingStartedUtc;
     private readonly Dictionary<int, string> _attachmentDurationLabels = new();
     private readonly ConcurrentDictionary<int, byte> _binaryDownloadsInFlight = new();
     private bool _hooksAttached;
@@ -184,8 +186,8 @@ public partial class ChatDetailPage : ContentPage
             return;
         }
 
-        Title = chat.PeerNickname;
-        PeerNameLabel.Text = chat.PeerNickname;
+        Title = FormatPeerTitle(chat);
+        PeerNameLabel.Text = FormatPeerTitle(chat);
         AvatarBadge.Apply(PeerAvatarFill, PeerAvatarInitials, PeerAvatarImage, chat.PeerNickname,
             chat.PeerNetworkIdShort, null);
         PeerIdLabel.Text = LocalizationUtils.GetStringByKeyWithFormat("chat.node", chat.PeerNetworkIdShort);
@@ -262,6 +264,7 @@ public partial class ChatDetailPage : ContentPage
                 _p2pSession.DeliveryPathChanged -= OnDeliveryPathChanged;
                 _p2pSession.ActiveChannelChanged -= OnActiveChannelChanged;
                 _p2pSession.HandshakeStatusChanged -= OnHandshakeStatusChanged;
+                _p2pSession.MlKemSessionChanged -= OnMlKemSessionChanged;
             }
 
             var uiSync = SynchronizationContext.Current;
@@ -278,7 +281,10 @@ public partial class ChatDetailPage : ContentPage
                 _p2pSession.ActiveChannelChanged += OnActiveChannelChanged;
                 _p2pSession.HandshakeStatusChanged -= OnHandshakeStatusChanged;
                 _p2pSession.HandshakeStatusChanged += OnHandshakeStatusChanged;
+                _p2pSession.MlKemSessionChanged -= OnMlKemSessionChanged;
+                _p2pSession.MlKemSessionChanged += OnMlKemSessionChanged;
                 RefreshSessionStatusLabel();
+                RefreshQuantumPeerMark();
             }
 
             TryBeginConnectChatTransport(user, chat, _p2pSession);
@@ -456,7 +462,10 @@ public partial class ChatDetailPage : ContentPage
             _p2pSession.ActiveChannelChanged += OnActiveChannelChanged;
             _p2pSession.HandshakeStatusChanged -= OnHandshakeStatusChanged;
             _p2pSession.HandshakeStatusChanged += OnHandshakeStatusChanged;
+            _p2pSession.MlKemSessionChanged -= OnMlKemSessionChanged;
+            _p2pSession.MlKemSessionChanged += OnMlKemSessionChanged;
             RefreshSessionStatusLabel();
+            RefreshQuantumPeerMark();
         }
 
         _hooksAttached = true;
@@ -486,6 +495,7 @@ public partial class ChatDetailPage : ContentPage
             _p2pSession.DeliveryPathChanged -= OnDeliveryPathChanged;
             _p2pSession.ActiveChannelChanged -= OnActiveChannelChanged;
             _p2pSession.HandshakeStatusChanged -= OnHandshakeStatusChanged;
+            _p2pSession.MlKemSessionChanged -= OnMlKemSessionChanged;
         }
 
         _hooksAttached = false;
@@ -599,8 +609,8 @@ public partial class ChatDetailPage : ContentPage
             if (fresh != null)
             {
                 _chat = fresh;
-                Title = fresh.PeerNickname;
-                PeerNameLabel.Text = fresh.PeerNickname;
+                Title = FormatPeerTitle(fresh);
+                PeerNameLabel.Text = FormatPeerTitle(fresh);
                 BotCommandsButton.IsVisible = fresh.IsBot;
                 RefreshSafetyLabel(fresh);
             }
@@ -1379,8 +1389,14 @@ public partial class ChatDetailPage : ContentPage
     {
         var user = _auth.CurrentUser;
         var chat = _chat;
-        if (user == null || chat == null || EnsureP2pSessionAttached(user, chat) == null)
+        if (user == null || chat == null)
             return;
+
+        if (EnsureP2pSessionAttached(user, chat) == null)
+        {
+            ShowDeliveryIssue(LocalizationUtils.GetStringByKey("error"));
+            return;
+        }
 
         if (_voice is { IsRecording: true })
         {
@@ -1423,6 +1439,7 @@ public partial class ChatDetailPage : ContentPage
             await _voice.StartAsync(MediaEconomy.SpeechBitrate(_p2p)).ConfigureAwait(true);
             VoiceButton.Text = "■";
             VoiceButton.TextColor = Colors.Red;
+            BeginVoiceRecordingIndicator();
         }
         catch (Exception ex)
         {
@@ -1434,6 +1451,7 @@ public partial class ChatDetailPage : ContentPage
 
     private async Task StopVoiceRecordingAndSendAsync()
     {
+        EndVoiceRecordingIndicator();
         ResetVoiceButton();
         var voice = _voice;
         _voice = null;
@@ -1484,6 +1502,7 @@ public partial class ChatDetailPage : ContentPage
         finally
         {
             _voice = null;
+            EndVoiceRecordingIndicator();
             ResetVoiceButton();
         }
     }
@@ -1492,6 +1511,40 @@ public partial class ChatDetailPage : ContentPage
     {
         VoiceButton.Text = "🎤";
         VoiceButton.TextColor = TorgLinkTheme.Text;
+    }
+
+    private void BeginVoiceRecordingIndicator()
+    {
+        _voiceRecordingStartedUtc = DateTime.UtcNow;
+        VoiceRecordingBar.IsVisible = true;
+        UpdateVoiceRecordingLabel();
+        _voiceRecordingTimer?.Stop();
+        _voiceRecordingTimer = Dispatcher.CreateTimer();
+        _voiceRecordingTimer.Interval = TimeSpan.FromSeconds(1);
+        _voiceRecordingTimer.Tick += OnVoiceRecordingTimerTick;
+        _voiceRecordingTimer.Start();
+    }
+
+    private void EndVoiceRecordingIndicator()
+    {
+        if (_voiceRecordingTimer != null)
+        {
+            _voiceRecordingTimer.Tick -= OnVoiceRecordingTimerTick;
+            _voiceRecordingTimer.Stop();
+            _voiceRecordingTimer = null;
+        }
+
+        VoiceRecordingBar.IsVisible = false;
+        VoiceRecordingLabel.Text = string.Empty;
+    }
+
+    private void OnVoiceRecordingTimerTick(object? sender, EventArgs e) => UpdateVoiceRecordingLabel();
+
+    private void UpdateVoiceRecordingLabel()
+    {
+        var seconds = Math.Max(0, (int)(DateTime.UtcNow - _voiceRecordingStartedUtc).TotalSeconds);
+        VoiceRecordingLabel.Text =
+            LocalizationUtils.GetStringByKeyWithFormat("chat.voice_recording", seconds);
     }
 
     private async void OnMessageRowTapped(object? sender, TappedEventArgs e)
@@ -1825,8 +1878,10 @@ public partial class ChatDetailPage : ContentPage
             chat.PeerNickname = display;
         }
 
-        Title = display;
-        PeerNameLabel.Text = display;
+        if (_chat != null)
+            _chat.PeerNickname = display;
+        Title = _chat != null ? FormatPeerTitle(_chat) : display;
+        PeerNameLabel.Text = Title;
         PeerIdLabel.Text = LocalizationUtils.GetStringByKeyWithFormat("chat.node", id);
         RefreshSafetyLabel(chat);
         await ApplyPeerAvatarBestEffortAsync(chat, display).ConfigureAwait(true);
@@ -2059,6 +2114,31 @@ public partial class ChatDetailPage : ContentPage
         MainThread.BeginInvokeOnMainThread(RefreshSessionStatusLabel);
     }
 
+    private void OnMlKemSessionChanged(object? sender, EventArgs e)
+    {
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            if (_chat != null && _p2pSession != null)
+                _chat.MlKemSessionVerified = _p2pSession.IsMlKemSession;
+            RefreshQuantumPeerMark();
+            foreach (var row in _allSidebarRows)
+                row.NotifyDisplayNameChanged();
+        });
+    }
+
+    private static string FormatPeerTitle(ChatEntity chat) =>
+        chat.MlKemSessionVerified ? chat.PeerNickname + " ⚛️" : chat.PeerNickname;
+
+    private void RefreshQuantumPeerMark()
+    {
+        if (_chat == null)
+            return;
+        if (_p2pSession != null)
+            _chat.MlKemSessionVerified = _p2pSession.IsMlKemSession || _chat.MlKemSessionVerified;
+        Title = FormatPeerTitle(_chat);
+        PeerNameLabel.Text = FormatPeerTitle(_chat);
+    }
+
     private void RefreshSessionStatusLabel()
     {
         var status = _p2pSession?.HandshakeStatus ?? ChatHandshakeStatus.Idle;
@@ -2068,6 +2148,7 @@ public partial class ChatDetailPage : ContentPage
             ChatHandshakeStatus.Established => LocalizationUtils.GetStringByKey("chat.session_established"),
             _ => string.Empty
         };
+        RefreshQuantumPeerMark();
     }
 
     private async void OnPathModeClicked(object? sender, EventArgs e)

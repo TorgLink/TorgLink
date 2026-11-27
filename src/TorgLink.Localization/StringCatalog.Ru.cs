@@ -162,6 +162,9 @@ public static partial class StringCatalog
         ["settings.logs"] = "Журнал",
         ["settings.about"] = "О приложении",
         ["settings.logout"] = "Разлогиниться",
+        ["settings.mlkem"] = "Квантовое шифрование (ML-KEM) при установке сессии",
+        ["settings.lora_mlkem_warning"] =
+            "При связи по LoRa может быть доступно только классическое согласование сессии (без ML-KEM).",
         ["settings.storage_mb"] = "Использовано {0:0.0} МБ",
         ["settings.storage_gb"] = "Использовано {0:0.0} ГБ",
         ["settings.about_body"] = "Mesh-мессенджер.\nВерсия 0.2.0\nAndroid 5.0 (API 21)+",

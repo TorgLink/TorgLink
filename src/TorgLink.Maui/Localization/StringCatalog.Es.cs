@@ -131,6 +131,9 @@ internal static partial class StringCatalog
         ["settings.logs"] = "Registro",
         ["settings.about"] = "Acerca de",
         ["settings.logout"] = "Cerrar sesión",
+        ["settings.mlkem"] = "Cifrado cuantico (ML-KEM) al iniciar la sesion",
+        ["settings.lora_mlkem_warning"] =
+            "Por LoRa, puede estar disponible solo la negociación de sesión clásica (sin ML-KEM).",
         ["settings.storage_mb"] = "Usado {0:0.0} MB",
         ["settings.storage_gb"] = "Usado {0:0.0} GB",
         ["settings.about_body"] = "Mensajero mesh.\nVersión 0.1\nAndroid 5.0 (API 21)+",
@@ -354,5 +357,6 @@ internal static partial class StringCatalog
         ["chat.delivery_issue"] = "Problema al entregar el mensaje actual.",
         ["chat.mic_denied"] = "No hay permiso para grabar audio.",
         ["chat.voice_file_fail"] = "No se pudo obtener el archivo de voz grabado.",
+        ["chat.voice_recording"] = "Grabando… {0}s",
     };
 }
