@@ -1,10 +1,11 @@
-using TorgLink.Maui.Localization;
+using TorgLink.Maui.Helpers;
 using TorgLink.Maui.Services;
 using Microsoft.Extensions.Logging;
 using ShortP2P.Client;
 using ShortP2P.Client.ChatMedia;
 using ShortP2P.Client.Services;
 using ShortP2P.Discovery;
+using TorgLink.Localization;
 
 namespace TorgLink.Maui;
 
@@ -15,6 +16,9 @@ public partial class ChatDetailPage
         var session = _p2pSession;
         if (session == null)
             return;
+        // Own send: stick to bottom and clear the New affordance.
+        _stickToBottom = true;
+        SetScrollToLatestVisible(false);
         var mode = MediaEconomy.Mode(_p2p);
         _ = RunBinarySendAsync(session, mode, work);
     }
@@ -48,7 +52,7 @@ public partial class ChatDetailPage
         MainThread.BeginInvokeOnMainThread(() => ShowDeliveryIssue(message));
 
     private Task UiAlertAsync(string title, string body) =>
-        MainThread.InvokeOnMainThreadAsync(() => DisplayAlert(title, body, Loc.T("ok")));
+        MainThread.InvokeOnMainThreadAsync(() => DisplayAlert(title, body, LocalizationUtils.GetStringByKey("ok")));
 
     private static async Task<IReadOnlyList<FileResult>> PickFilesAsync(PickOptions options)
     {
@@ -74,6 +78,15 @@ public partial class ChatDetailPage
         if (user == null || chat == null || EnsureP2pSessionAttached(user, chat) == null)
             return;
         ClearDeliveryIssue();
+        if (_p2pSession?.IsMeshtasticPathActive == true)
+        {
+            await UiAlertAsync(
+                    LocalizationUtils.GetStringByKey("chat.file"),
+                    LocalizationUtils.GetStringByKey("chat.binary_meshtastic_forbidden"))
+                .ConfigureAwait(true);
+            return;
+        }
+
         await SyncTrafficQualityAsync().ConfigureAwait(true);
 
         IReadOnlyList<FileResult> picks;
@@ -81,7 +94,7 @@ public partial class ChatDetailPage
         {
             picks = await PickFilesAsync(new PickOptions
             {
-                PickerTitle = Loc.T("chat.image_picker"),
+                PickerTitle = LocalizationUtils.GetStringByKey("chat.image_picker"),
                 FileTypes = FilePickerFileType.Images
             }).ConfigureAwait(true);
         }
@@ -100,7 +113,7 @@ public partial class ChatDetailPage
     {
         if (!ImageAttachHelper.TryGetMimeFromExtension(pick.FileName, out var mime))
         {
-            await UiAlertAsync(Loc.T("chat.file"), Loc.T("chat.only_images")).ConfigureAwait(false);
+            await UiAlertAsync(LocalizationUtils.GetStringByKey("chat.file"), LocalizationUtils.GetStringByKey("chat.only_images")).ConfigureAwait(false);
             return;
         }
 
@@ -108,20 +121,20 @@ public partial class ChatDetailPage
         AppLog.BinaryLoaded("image", pick.FileName, bytes.Length);
         if (bytes.Length < 12)
         {
-            await UiAlertAsync(Loc.T("chat.file"), Loc.T("chat.file_too_small")).ConfigureAwait(false);
+            await UiAlertAsync(LocalizationUtils.GetStringByKey("chat.file"), LocalizationUtils.GetStringByKey("chat.file_too_small")).ConfigureAwait(false);
             return;
         }
 
         if (!ImageAttachHelper.SniffMatchesMime(bytes.AsSpan(0, Math.Min(12, bytes.Length)), mime))
         {
-            await UiAlertAsync(Loc.T("chat.file"), Loc.T("chat.file_mismatch")).ConfigureAwait(false);
+            await UiAlertAsync(LocalizationUtils.GetStringByKey("chat.file"), LocalizationUtils.GetStringByKey("chat.file_mismatch")).ConfigureAwait(false);
             return;
         }
 
         var fitted = FitOutgoingImage(bytes, mime);
         if (fitted.Bytes == null)
         {
-            await UiAlertAsync(Loc.T("chat.compress"), fitted.Error ?? Loc.T("chat.compress_fail"))
+            await UiAlertAsync(LocalizationUtils.GetStringByKey("chat.compress"), fitted.Error ?? LocalizationUtils.GetStringByKey("chat.compress_fail"))
                 .ConfigureAwait(false);
             return;
         }
@@ -139,6 +152,15 @@ public partial class ChatDetailPage
         if (user == null || chat == null || EnsureP2pSessionAttached(user, chat) == null)
             return;
         ClearDeliveryIssue();
+        if (_p2pSession?.IsMeshtasticPathActive == true)
+        {
+            await UiAlertAsync(
+                    LocalizationUtils.GetStringByKey("chat.file"),
+                    LocalizationUtils.GetStringByKey("chat.binary_meshtastic_forbidden"))
+                .ConfigureAwait(true);
+            return;
+        }
+
         await SyncTrafficQualityAsync().ConfigureAwait(true);
 
         IReadOnlyList<FileResult> picks;
@@ -146,7 +168,7 @@ public partial class ChatDetailPage
         {
             picks = await PickFilesAsync(new PickOptions
             {
-                PickerTitle = Loc.T("chat.doc_picker"),
+                PickerTitle = LocalizationUtils.GetStringByKey("chat.doc_picker"),
                 FileTypes = OfficeDocFileTypes
             }).ConfigureAwait(true);
         }
@@ -165,7 +187,7 @@ public partial class ChatDetailPage
     {
         if (!TryGetDocumentOrVideoMime(pick.FileName, out var mime))
         {
-            await UiAlertAsync(Loc.T("chat.file"), Loc.T("chat.only_docs_video")).ConfigureAwait(false);
+            await UiAlertAsync(LocalizationUtils.GetStringByKey("chat.file"), LocalizationUtils.GetStringByKey("chat.only_docs_video")).ConfigureAwait(false);
             return;
         }
 
@@ -173,24 +195,27 @@ public partial class ChatDetailPage
         AppLog.BinaryLoaded("document", pick.FileName, bytes.Length);
         if (bytes.Length == 0)
         {
-            await UiAlertAsync(Loc.T("chat.file"), Loc.T("chat.file_empty")).ConfigureAwait(false);
+            await UiAlertAsync(LocalizationUtils.GetStringByKey("chat.file"), LocalizationUtils.GetStringByKey("chat.file_empty")).ConfigureAwait(false);
             return;
         }
 
         var sendName = pick.FileName;
         var isVideo = Video144pTranscoder.IsVideoMime(mime);
-        
-        if (isVideo)
+        if (session.IsMeshtasticPathActive)
         {
-            await UiAlertAsync(Loc.T("chat.file"), "В этой версии отправка видео временно недоступна.").ConfigureAwait(false);
+            await UiAlertAsync(
+                    LocalizationUtils.GetStringByKey("chat.file"),
+                    LocalizationUtils.GetStringByKey("chat.binary_meshtastic_forbidden"))
+                .ConfigureAwait(false);
             return;
         }
+
         if (!isVideo)
         {
             var headLen = Math.Min(4096, bytes.Length);
             if (!DocumentAttachHelper.SniffMatchesMime(bytes.AsSpan(0, headLen), mime))
             {
-                await UiAlertAsync(Loc.T("chat.file"), Loc.T("chat.file_type_mismatch")).ConfigureAwait(false);
+                await UiAlertAsync(LocalizationUtils.GetStringByKey("chat.file"), LocalizationUtils.GetStringByKey("chat.file_type_mismatch")).ConfigureAwait(false);
                 return;
             }
         }
@@ -213,27 +238,55 @@ public partial class ChatDetailPage
         if (user == null || chat == null || EnsureP2pSessionAttached(user, chat) == null)
             return;
         ClearDeliveryIssue();
+        if (_p2pSession?.IsMeshtasticPathActive == true)
+        {
+            await UiAlertAsync(
+                    LocalizationUtils.GetStringByKey("chat.camera"),
+                    LocalizationUtils.GetStringByKey("chat.binary_meshtastic_forbidden"))
+                .ConfigureAwait(true);
+            return;
+        }
 
-        var photoLabel = Loc.T("preview.photo");
-        var videoLabel = Loc.T("chat.video") + " (в этой версии недоступно)";
-        var choice = await DisplayActionSheet(Loc.T("chat.camera"), Loc.T("cancel"), null, photoLabel, videoLabel)
+        var photoLabel = LocalizationUtils.GetStringByKey("preview.photo");
+        var videoLabel = LocalizationUtils.GetStringByKey("chat.video");
+        var choice = await DisplayActionSheet(LocalizationUtils.GetStringByKey("chat.camera"), LocalizationUtils.GetStringByKey("cancel"), null, photoLabel, videoLabel)
             .ConfigureAwait(true);
-        if (string.IsNullOrEmpty(choice) || choice == Loc.T("cancel"))
+        if (string.IsNullOrEmpty(choice) || choice == LocalizationUtils.GetStringByKey("cancel"))
             return;
 
         if (choice == photoLabel)
             await CaptureAndQueueCameraPhotoAsync().ConfigureAwait(true);
         else if (choice == videoLabel)
-            await UiAlertAsync(Loc.T("chat.camera"), "В этой версии отправка видео временно недоступна.").ConfigureAwait(true);
+        {
+            if (_p2pSession?.IsMeshtasticPathActive == true)
+            {
+                await UiAlertAsync(
+                        LocalizationUtils.GetStringByKey("chat.video"),
+                        LocalizationUtils.GetStringByKey("chat.binary_meshtastic_forbidden"))
+                    .ConfigureAwait(true);
+                return;
+            }
+
+            await CaptureAndQueueCameraVideoAsync().ConfigureAwait(true);
+        }
     }
 
     private async Task CaptureAndQueueCameraPhotoAsync()
     {
         try
         {
+            if (_p2pSession?.IsMeshtasticPathActive == true)
+            {
+                await UiAlertAsync(
+                        LocalizationUtils.GetStringByKey("chat.camera"),
+                        LocalizationUtils.GetStringByKey("chat.binary_meshtastic_forbidden"))
+                    .ConfigureAwait(true);
+                return;
+            }
+
             if (!MediaPicker.Default.IsCaptureSupported)
             {
-                await DisplayAlert(Loc.T("chat.camera"), Loc.T("chat.camera_unsupported"), Loc.T("ok"))
+                await DisplayAlert(LocalizationUtils.GetStringByKey("chat.camera"), LocalizationUtils.GetStringByKey("chat.camera_unsupported"), LocalizationUtils.GetStringByKey("ok"))
                     .ConfigureAwait(true);
                 return;
             }
@@ -241,7 +294,7 @@ public partial class ChatDetailPage
             var cam = await Permissions.RequestAsync<Permissions.Camera>().ConfigureAwait(true);
             if (cam != PermissionStatus.Granted)
             {
-                await DisplayAlert(Loc.T("chat.camera"), Loc.T("chat.camera_perm"), Loc.T("ok"))
+                await DisplayAlert(LocalizationUtils.GetStringByKey("chat.camera"), LocalizationUtils.GetStringByKey("chat.camera_perm"), LocalizationUtils.GetStringByKey("ok"))
                     .ConfigureAwait(true);
                 return;
             }
@@ -259,18 +312,18 @@ public partial class ChatDetailPage
         }
         catch (FeatureNotSupportedException)
         {
-            await DisplayAlert(Loc.T("chat.camera"), Loc.T("chat.camera_unsupported"), Loc.T("ok"))
+            await DisplayAlert(LocalizationUtils.GetStringByKey("chat.camera"), LocalizationUtils.GetStringByKey("chat.camera_unsupported"), LocalizationUtils.GetStringByKey("ok"))
                 .ConfigureAwait(true);
         }
         catch (PermissionException)
         {
-            await DisplayAlert(Loc.T("chat.camera"), Loc.T("chat.camera_perm"), Loc.T("ok"))
+            await DisplayAlert(LocalizationUtils.GetStringByKey("chat.camera"), LocalizationUtils.GetStringByKey("chat.camera_perm"), LocalizationUtils.GetStringByKey("ok"))
                 .ConfigureAwait(true);
         }
         catch (FileNotFoundException ex) when (IsAppxManifestMissing(ex))
         {
             _logger.LogWarning(ex, "Camera photo failed: AppxManifest missing");
-            await DisplayAlert(Loc.T("chat.camera"), Loc.T("chat.camera_windows_manifest"), Loc.T("ok"))
+            await DisplayAlert(LocalizationUtils.GetStringByKey("chat.camera"), LocalizationUtils.GetStringByKey("chat.camera_windows_manifest"), LocalizationUtils.GetStringByKey("ok"))
                 .ConfigureAwait(true);
         }
         catch (Exception ex)
@@ -289,17 +342,26 @@ public partial class ChatDetailPage
         AppLog.BinaryLoaded("camera-photo", fileName, bytes.Length);
         if (bytes.Length < 12)
         {
-            await UiAlertAsync(Loc.T("chat.camera"), Loc.T("chat.camera_photo_fail")).ConfigureAwait(false);
+            await UiAlertAsync(LocalizationUtils.GetStringByKey("chat.camera"), LocalizationUtils.GetStringByKey("chat.camera_photo_fail")).ConfigureAwait(false);
             return;
         }
 
         if (!ImageAttachHelper.TryGetMimeFromExtension(fileName, out var mime))
             mime = "image/jpeg";
 
+        // TRL-31 / TRL-38: bake EXIF orientation into pixels; on Windows also undo
+        // CameraCaptureUI horizontal mirroring so the photo reads left to right everywhere.
+        var normalized = CameraHelper.Normalize(bytes);
+        if (!ReferenceEquals(normalized, bytes))
+        {
+            bytes = normalized;
+            mime = "image/jpeg";
+        }
+
         var fitted = FitOutgoingImage(bytes, mime);
         if (fitted.Bytes == null)
         {
-            await UiAlertAsync(Loc.T("chat.compress"), fitted.Error ?? Loc.T("chat.compress_fail"))
+            await UiAlertAsync(LocalizationUtils.GetStringByKey("chat.compress"), fitted.Error ?? LocalizationUtils.GetStringByKey("chat.compress_fail"))
                 .ConfigureAwait(false);
             return;
         }
@@ -312,13 +374,142 @@ public partial class ChatDetailPage
 
     private async Task CaptureAndQueueCameraVideoAsync()
     {
-        // Video capture is disabled in this release.
-        await UiAlertAsync(Loc.T("chat.camera"), "В этой версии отправка видео временно недоступна.").ConfigureAwait(true);
+        try
+        {
+            if (!MediaPicker.Default.IsCaptureSupported)
+            {
+                await DisplayAlert(LocalizationUtils.GetStringByKey("chat.camera"), LocalizationUtils.GetStringByKey("chat.camera_unsupported"), LocalizationUtils.GetStringByKey("ok"))
+                    .ConfigureAwait(true);
+                return;
+            }
+
+            var cam = await Permissions.RequestAsync<Permissions.Camera>().ConfigureAwait(true);
+            if (cam != PermissionStatus.Granted)
+            {
+                await DisplayAlert(LocalizationUtils.GetStringByKey("chat.camera"), LocalizationUtils.GetStringByKey("chat.camera_perm"), LocalizationUtils.GetStringByKey("ok"))
+                    .ConfigureAwait(true);
+                return;
+            }
+
+            var mic = await Permissions.RequestAsync<Permissions.Microphone>().ConfigureAwait(true);
+            if (mic != PermissionStatus.Granted)
+            {
+                await DisplayAlert(LocalizationUtils.GetStringByKey("chat.camera"), LocalizationUtils.GetStringByKey("chat.camera_mic_perm"), LocalizationUtils.GetStringByKey("ok"))
+                    .ConfigureAwait(true);
+                return;
+            }
+
+#if ANDROID
+            await EnsureLegacyStorageWriteAsync().ConfigureAwait(true);
+#endif
+
+            var video = await MediaPicker.Default.CaptureVideoAsync().ConfigureAwait(true);
+            if (video == null)
+                return;
+
+            await SyncTrafficQualityAsync().ConfigureAwait(true);
+            QueueBinarySend((session, ct) => SendCameraVideoAsync(session, video, ct));
+        }
+        catch (FeatureNotSupportedException)
+        {
+            await DisplayAlert(LocalizationUtils.GetStringByKey("chat.camera"), LocalizationUtils.GetStringByKey("chat.camera_unsupported"), LocalizationUtils.GetStringByKey("ok"))
+                .ConfigureAwait(true);
+        }
+        catch (PermissionException)
+        {
+            await DisplayAlert(LocalizationUtils.GetStringByKey("chat.camera"), LocalizationUtils.GetStringByKey("chat.camera_perm"), LocalizationUtils.GetStringByKey("ok"))
+                .ConfigureAwait(true);
+        }
+        catch (FileNotFoundException ex) when (IsAppxManifestMissing(ex))
+        {
+            _logger.LogWarning(ex, "Camera video failed: AppxManifest missing");
+            await DisplayAlert(LocalizationUtils.GetStringByKey("chat.camera"), LocalizationUtils.GetStringByKey("chat.camera_windows_manifest"), LocalizationUtils.GetStringByKey("ok"))
+                .ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Capture camera video failed");
+            ShowDeliveryIssue(ex.Message);
+        }
     }
 
     private async Task SendCameraVideoAsync(ChatP2PSession session, FileResult video, CancellationToken ct)
     {
-        await UiAlertAsync(Loc.T("chat.camera"), "В этой версии отправка видео временно недоступна.").ConfigureAwait(true);
+        if (session.IsMeshtasticPathActive)
+        {
+            await UiAlertAsync(
+                    LocalizationUtils.GetStringByKey("chat.video"),
+                    LocalizationUtils.GetStringByKey("chat.binary_meshtastic_forbidden"))
+                .ConfigureAwait(false);
+            return;
+        }
+
+        var fileName = string.IsNullOrWhiteSpace(video.FileName)
+            ? $"camera-{DateTime.UtcNow:yyyyMMdd-HHmmss}.mp4"
+            : video.FileName;
+
+        string? unmirrorTemp = null;
+        byte[] bytes;
+        try
+        {
+#if WINDOWS
+            // TRL-38: Windows CameraCaptureUI video is mirrored; flip before send/transcode.
+            var sourcePath = video.FullPath;
+            if (string.IsNullOrWhiteSpace(sourcePath) || !File.Exists(sourcePath))
+            {
+                sourcePath = Path.Combine(FileSystem.CacheDirectory, $"torglink_cam_{DateTime.UtcNow.Ticks}_{fileName}");
+                await using (var src = await video.OpenReadAsync().ConfigureAwait(false))
+                await using (var dst = File.Create(sourcePath))
+                    await src.CopyToAsync(dst, ct).ConfigureAwait(false);
+                unmirrorTemp = sourcePath;
+            }
+
+            var fixedPath = await CameraHelper.UnmirrorVideoAsync(sourcePath, ct).ConfigureAwait(false);
+            if (!string.Equals(fixedPath, sourcePath, StringComparison.OrdinalIgnoreCase))
+            {
+                if (unmirrorTemp != null)
+                {
+                    try { File.Delete(unmirrorTemp); } catch { /* ignore */ }
+                }
+
+                unmirrorTemp = fixedPath;
+                sourcePath = fixedPath;
+            }
+
+            bytes = await File.ReadAllBytesAsync(sourcePath, ct).ConfigureAwait(false);
+#else
+            bytes = await ReadPickBytesAsync(video, ct).ConfigureAwait(false);
+#endif
+        }
+        finally
+        {
+#if WINDOWS
+            if (unmirrorTemp != null)
+            {
+                try { File.Delete(unmirrorTemp); } catch { /* ignore */ }
+            }
+#endif
+        }
+
+        AppLog.BinaryLoaded("camera-video", fileName, bytes.Length);
+        if (bytes.Length < 32)
+        {
+            await UiAlertAsync(LocalizationUtils.GetStringByKey("chat.camera"), LocalizationUtils.GetStringByKey("chat.camera_fail")).ConfigureAwait(false);
+            return;
+        }
+
+        if (!TryGetDocumentOrVideoMime(fileName, out var mime))
+            mime = "video/mp4";
+
+        var prepared = await PrepareOutgoingFileAsync(bytes, fileName, mime, isVideo: true, ct).ConfigureAwait(false);
+        if (prepared == null)
+            return;
+
+        _media.ValidateDocumentMime(prepared.Value.Mime);
+        await PrepareBinarySendAsync().ConfigureAwait(false);
+        await session.SendFileAsync(prepared.Value.FileName, prepared.Value.Bytes, prepared.Value.Mime, ct)
+            .ConfigureAwait(false);
+        MainThread.BeginInvokeOnMainThread(ClearDeliveryIssue);
     }
 
     private async Task FinishAndSendVoiceAsync(
@@ -326,10 +517,26 @@ public partial class ChatDetailPage
     {
         try
         {
+            if (session.IsMeshtasticPathActive)
+            {
+                await UiAlertAsync(
+                        LocalizationUtils.GetStringByKey("chat.voice"),
+                        LocalizationUtils.GetStringByKey("chat.binary_meshtastic_forbidden"))
+                    .ConfigureAwait(false);
+                return;
+            }
+
             var recorded = await voice.TakeResultAsync(ct).ConfigureAwait(false);
             AppLog.BinaryLoaded("voice", recorded.FileName, recorded.Bytes.Length);
+            if (recorded.Bytes.Length > MediaEconomy.VoiceLimit(_p2p))
+            {
+                await UiAlertAsync(LocalizationUtils.GetStringByKey("chat.size"), FormatByteLimit(MediaEconomy.VoiceLimit(_p2p)))
+                    .ConfigureAwait(false);
+                return;
+            }
+
             _media.ValidateDocumentMime(recorded.MimeType);
-            _media.ValidateDocumentSize(recorded.Bytes.Length);
+            _media.ValidateVoiceSize(recorded.Bytes.Length, MediaEconomy.Mode(_p2p));
             await PrepareBinarySendAsync().ConfigureAwait(false);
             await session.SendFileAsync(recorded.FileName, recorded.Bytes, recorded.MimeType, ct)
                 .ConfigureAwait(false);
@@ -358,12 +565,12 @@ public partial class ChatDetailPage
 
     private (byte[]? Bytes, string Mime, string? Error) FitOutgoingImage(byte[] bytes, string mime)
     {
-        var limit = MediaEconomy.ImageLimit(_media, _p2p);
+        var limit = MediaEconomy.ImageLimit(_p2p);
         if (bytes.Length <= limit)
             return (bytes, mime, null);
 
         if (!ImageAttachmentCompressor.TryCompressToMaxBytes(bytes, limit, out var compressed, out var err))
-            return (null, mime, err ?? Loc.T("chat.compress_fail"));
+            return (null, mime, err ?? LocalizationUtils.GetStringByKey("chat.compress_fail"));
 
         return (compressed, ImageAttachmentCompressor.SuggestMimeAfterCompression(), null);
     }
@@ -384,8 +591,8 @@ public partial class ChatDetailPage
                     .ConfigureAwait(false);
                 if (!prepared.Ok || prepared.Bytes == null)
                 {
-                    await UiAlertAsync(Loc.T("chat.video"),
-                            prepared.Error ?? Loc.Tf("chat.video_transcode_fail",
+                    await UiAlertAsync(LocalizationUtils.GetStringByKey("chat.video"),
+                            prepared.Error ?? LocalizationUtils.GetStringByKeyWithFormat("chat.video_transcode_fail",
                                 MediaEconomy.VideoResolutionLabel(_p2p)))
                         .ConfigureAwait(false);
                     return null;
@@ -408,20 +615,30 @@ public partial class ChatDetailPage
                 }
             }
         }
-        else if (bytes.Length > _media.MaxDocumentBytes)
+        else if (bytes.Length > OutgoingFileLimit(isVideo))
         {
-            var limKb = (_media.MaxDocumentBytes + 1023) / 1024;
-            await UiAlertAsync(Loc.T("chat.size"), $"В данной версии размер передаваемых файлов ограничен {limKb} кБ").ConfigureAwait(false);
+            await UiAlertAsync(LocalizationUtils.GetStringByKey("chat.size"), FormatByteLimit(OutgoingFileLimit(isVideo))).ConfigureAwait(false);
             return null;
         }
 
-        if (bytes.Length > _media.MaxDocumentBytes)
+        if (bytes.Length > OutgoingFileLimit(isVideo))
         {
-            await UiAlertAsync(Loc.T("chat.size"), Loc.T("chat.size_still")).ConfigureAwait(false);
+            await UiAlertAsync(LocalizationUtils.GetStringByKey("chat.size"), LocalizationUtils.GetStringByKey("chat.size_still")).ConfigureAwait(false);
             return null;
         }
 
         return (bytes, mime, fileName);
+    }
+
+    private int OutgoingFileLimit(bool isVideo) =>
+        isVideo ? MediaEconomy.VideoLimit(_p2p) : MediaEconomy.DocumentLimit(_p2p);
+
+    private static string FormatByteLimit(int bytes)
+    {
+        if (bytes >= 1024 * 1024 && bytes % (1024 * 1024) == 0)
+            return $"В данной версии размер передаваемых файлов ограничен {bytes / (1024 * 1024)} МБ";
+        var kb = (bytes + 1023) / 1024;
+        return $"В данной версии размер передаваемых файлов ограничен {kb} кБ";
     }
 
     private async Task PrepareBinarySendAsync()
@@ -429,3 +646,4 @@ public partial class ChatDetailPage
         await MessengerServersBootstrap.EnsureRunningAsync(_p2p, _logger).ConfigureAwait(false);
     }
 }
+

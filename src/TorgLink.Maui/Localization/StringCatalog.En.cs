@@ -66,6 +66,8 @@ internal static partial class StringCatalog
         ["contact.nickname"] = "Nickname",
         ["contact.network_id"] = "Network ID",
         ["contact.about"] = "About",
+        ["contact.bot"] = "Bot",
+        ["contact.bot_mark"] = "bot",
         ["contact.not_set"] = "Not set",
         ["profile.title"] = "My profile",
         ["profile.save"] = "Save",
@@ -87,6 +89,7 @@ internal static partial class StringCatalog
         ["blacklist.add"] = "Block",
         ["blacklist.add_title"] = "Blacklist",
         ["blacklist.add_body"] = "Hide “{0}”: messages and invites will still be received but not shown, and there will be no notifications.",
+        ["blacklist.add_body_bot"] = "Block bot “{0}”: hide locally and file a trust claim about every messenger server where it is present.",
         ["blacklist.add_hint"] = "Add to blacklist",
         ["blacklist.unblock"] = "Unblock",
         ["blacklist.blocked"] = "This user is on the blacklist.",
@@ -119,6 +122,7 @@ internal static partial class StringCatalog
         ["settings.udp"] = "UDP (local port)",
         ["settings.lan"] = "LAN scanning",
         ["settings.routing"] = "P2P routing",
+        ["settings.visible_for_search"] = "Visible for search",
         ["settings.database"] = "Database",
         ["settings.database_hint"] = "Requires app restart",
         ["settings.database_change_title"] = "Change Database",
@@ -131,6 +135,9 @@ internal static partial class StringCatalog
         ["settings.logs"] = "Logs",
         ["settings.about"] = "About",
         ["settings.logout"] = "Log out",
+        ["settings.mlkem"] = "Quantum encryption (ML-KEM) at session setup",
+        ["settings.lora_mlkem_warning"] =
+            "Over LoRa, only the classic session setup may be available (without ML-KEM).",
         ["settings.storage_mb"] = "Used {0:0.0} MB",
         ["settings.storage_gb"] = "Used {0:0.0} GB",
         ["settings.about_body"] = "Mesh messenger.\nVersion 0.1\nAndroid 5.0 (API 21)+",
@@ -168,6 +175,12 @@ internal static partial class StringCatalog
         ["chat.file_type_mismatch"] = "Content does not match the file type.",
         ["chat.file_empty"] = "File is empty.",
         ["chat.video"] = "Video",
+        ["chat.video_meshtastic_forbidden"] =
+            "Binary transfers (voice, images, documents) are not allowed on the Meshtastic path.",
+        ["chat.binary_meshtastic_forbidden"] =
+            "Binary transfers (voice, images, documents) are not allowed on the Meshtastic path.",
+        ["chat.text_meshtastic_too_long"] =
+            "On Meshtastic, text may be at most {0} characters. Shorten the message to send.",
         ["chat.video_too_big"] = "Video exceeds the limit. Compress to {0}?",
         ["chat.size"] = "Size",
         ["chat.size_over"] = "File is larger than {0} MB (maxDocumentBytes in chat-media.json).",
@@ -200,6 +213,7 @@ internal static partial class StringCatalog
         ["chat.state.tap_download"] = "tap to download",
         ["chat.state.tap_play"] = "tap to play",
         ["chat.state.tap_row"] = "tap row — Download",
+        ["chat.scroll_new"] = "New",
         ["chat.kb"] = "{0} KB",
         ["image.title"] = "Image",
         ["copied"] = "Copied",
@@ -347,5 +361,6 @@ internal static partial class StringCatalog
         ["chat.delivery_issue"] = "Problem delivering the current message.",
         ["chat.mic_denied"] = "No permission to record audio.",
         ["chat.voice_file_fail"] = "Could not get the recorded voice file.",
+        ["chat.voice_recording"] = "Recording… {0}s",
     };
 }

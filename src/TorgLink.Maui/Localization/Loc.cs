@@ -1,3 +1,5 @@
+using TorgLink.Localization;
+
 namespace TorgLink.Maui.Localization;
 
 /// <summary>UI strings only. Log messages stay in their original language.</summary>

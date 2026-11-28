@@ -2,13 +2,14 @@ using Microsoft.Extensions.Logging;
 using NAudio.Wave;
 using ShortP2P.Client.ChatMedia;
 using ShortP2P.Discovery;
+using TorgLink.Localization;
 using Timer = System.Windows.Forms.Timer;
 
 namespace TorgLink.WinForms;
 
 public sealed partial class ChatForm
 {
-    private const int MaxVoiceRecordSeconds = 120;
+    private int MaxVoiceRecordSeconds => MediaEconomy.VoiceMaxSeconds(_routing);
 
     private readonly object _voiceCapLock = new();
     private volatile bool _voiceDiscardNextStop;
@@ -27,9 +28,18 @@ public sealed partial class ChatForm
         if (_p2pSession == null)
             return;
 
+        if (_p2pSession.IsMeshtasticPathActive)
+        {
+            MessageBox.Show(this,
+                LocalizationUtils.GetStringByKey("chat.binary_meshtastic_forbidden"),
+                LocalizationUtils.GetStringByKey("chat.file"),
+                MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
         using var dlg = new OpenFileDialog
         {
-            Title = "Изображение (JPEG, PNG, GIF)",
+            Title = "Изображение (JPEG, PNG, GIF, до 10 МБ)",
             Filter = "Изображения|*.jpg;*.jpeg;*.png;*.gif|Все файлы|*.*",
             CheckFileExists = true,
             Multiselect = true
@@ -91,7 +101,7 @@ public sealed partial class ChatForm
 
     private (byte[]? Bytes, string Mime, string? Error) FitOutgoingImage(byte[] bytes, string mime)
     {
-        var limit = MediaEconomy.ImageLimit(_media, _routing);
+        var limit = MediaEconomy.ImageLimit(_routing);
         if (bytes.Length <= limit)
             return (bytes, mime, null);
 
@@ -110,11 +120,20 @@ public sealed partial class ChatForm
         if (_p2pSession == null)
             return;
 
+        if (_p2pSession.IsMeshtasticPathActive)
+        {
+            MessageBox.Show(this,
+                LocalizationUtils.GetStringByKey("chat.binary_meshtastic_forbidden"),
+                LocalizationUtils.GetStringByKey("chat.file"),
+                MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
         using var dlg = new OpenFileDialog
         {
-            Title = "Документ Word / LibreOffice / PDF",
+            Title = "Документ (до 20 МБ) или видео (до 60 МБ)",
             Filter =
-                "Документы|*.doc;*.docx;*.rtf;*.pdf;*.odt;*.ods;*.odp;*.odg;*.xlsx;*.xls;*.pptx;*.ppt|Все файлы|*.*",
+                "Документы и видео|*.doc;*.docx;*.rtf;*.pdf;*.odt;*.ods;*.odp;*.odg;*.xlsx;*.xls;*.pptx;*.ppt;*.mp4;*.mov;*.avi;*.wmv;*.webm;*.ogv|Все файлы|*.*",
             CheckFileExists = true,
             Multiselect = true
         };
@@ -129,14 +148,25 @@ public sealed partial class ChatForm
     {
         try
         {
-            if (!DocumentAttachHelper.TryGetMimeFromExtension(path, out var mime))
+            var isVideo = TryGetVideoMime(path, out var videoMime);
+            if (!isVideo && !DocumentAttachHelper.TryGetMimeFromExtension(path, out videoMime))
             {
                 MessageBox.Show(this,
-                    "Допустимы только .doc, .docx, .rtf, .pdf, .odt, .ods, .odp, .odg, .xlsx, .xls, .pptx, .ppt.",
+                    "Допустимы офисные документы и видео (.mp4, .mov, .avi, .webm, .ogv, .wmv).",
                     "Файл", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
 
+            if (_p2pSession!.IsMeshtasticPathActive)
+            {
+                MessageBox.Show(this,
+                    LocalizationUtils.GetStringByKey("chat.binary_meshtastic_forbidden"),
+                    LocalizationUtils.GetStringByKey("chat.file"),
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            var mime = videoMime;
             var bytes = await ReadAllBytesAsync(path).ConfigureAwait(true);
             if (bytes.Length == 0)
             {
@@ -145,25 +175,31 @@ public sealed partial class ChatForm
                 return;
             }
 
-            var headLen = Math.Min(4096, bytes.Length);
-            if (!DocumentAttachHelper.SniffMatchesMime(bytes.AsSpan(0, headLen), mime))
+            if (!isVideo)
             {
-                MessageBox.Show(this,
-                    "Содержимое не совпадает с типом файла (ожидается корректный Office/LibreOffice/PDF).",
-                    "Файл", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
+                var headLen = Math.Min(4096, bytes.Length);
+                if (!DocumentAttachHelper.SniffMatchesMime(bytes.AsSpan(0, headLen), mime))
+                {
+                    MessageBox.Show(this,
+                        "Содержимое не совпадает с типом файла (ожидается корректный Office/LibreOffice/PDF).",
+                        "Файл", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
             }
 
-            if (bytes.Length > _media.MaxDocumentBytes)
+            var limit = isVideo ? MediaEconomy.VideoLimit(_routing) : MediaEconomy.DocumentLimit(_routing);
+            if (bytes.Length > limit)
             {
-                var limKb = (_media.MaxDocumentBytes + 1023) / 1024;
-                MessageBox.Show(this,
-                    $"В данной версии размер передаваемых файлов ограничен {limKb} КБ.",
+                MessageBox.Show(this, FormatByteLimit(limit),
                     "Размер", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
 
             _media.ValidateDocumentMime(mime);
+            if (isVideo)
+                _media.ValidateVideoSize(bytes.Length, _routing.TrafficQuality);
+            else
+                _media.ValidateDocumentSize(bytes.Length, _routing.TrafficQuality);
             await _p2pSession!.SendFileAsync(path, bytes, mime).ConfigureAwait(true);
         }
         catch (Exception ex)
@@ -185,6 +221,15 @@ public sealed partial class ChatForm
         EnsureSession(user);
         if (_p2pSession == null)
             return;
+
+        if (_voiceWaveIn == null && _p2pSession.IsMeshtasticPathActive)
+        {
+            MessageBox.Show(this,
+                LocalizationUtils.GetStringByKey("chat.binary_meshtastic_forbidden"),
+                LocalizationUtils.GetStringByKey("chat.voice"),
+                MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
 
         if (_voiceWaveIn != null)
         {
@@ -367,8 +412,16 @@ public sealed partial class ChatForm
                     return;
                 }
 
+                var voiceLimit = MediaEconomy.VoiceLimit(_routing);
+                if (ogg.Length > voiceLimit)
+                {
+                    MessageBox.Show(this, FormatByteLimit(voiceLimit), "Размер",
+                        MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+
                 _media.ValidateDocumentMime(VoiceRecordHelper.VoiceMessageMime);
-                _media.ValidateDocumentSize(ogg.Length);
+                _media.ValidateVoiceSize(ogg.Length, _routing.TrafficQuality);
                 await _p2pSession!
                     .SendFileAsync(VoiceRecordHelper.VoiceFileName, ogg, VoiceRecordHelper.VoiceMessageMime)
                     .ConfigureAwait(true);
@@ -447,6 +500,29 @@ public sealed partial class ChatForm
     {
         _attachVoice.BackColor = SystemColors.Control;
         _attachVoice.Text = "🎤";
+    }
+
+    private static string FormatByteLimit(int bytes)
+    {
+        if (bytes >= 1024 * 1024 && bytes % (1024 * 1024) == 0)
+            return $"В данной версии размер передаваемых файлов ограничен {bytes / (1024 * 1024)} МБ.";
+        var kb = (bytes + 1023) / 1024;
+        return $"В данной версии размер передаваемых файлов ограничен {kb} КБ.";
+    }
+
+    private static bool TryGetVideoMime(string path, out string mime)
+    {
+        mime = Path.GetExtension(path).ToLowerInvariant() switch
+        {
+            ".mp4" => "video/mp4",
+            ".mov" => "video/quicktime",
+            ".avi" => "video/x-msvideo",
+            ".wmv" => "video/x-ms-wmv",
+            ".webm" => "video/webm",
+            ".ogv" => "video/ogg",
+            _ => ""
+        };
+        return mime.Length > 0;
     }
 
     private static Task<byte[]> ReadAllBytesAsync(string path) =>

@@ -66,6 +66,8 @@ internal static partial class StringCatalog
         ["contact.nickname"] = "Pseudo",
         ["contact.network_id"] = "Network ID",
         ["contact.about"] = "À propos",
+        ["contact.bot"] = "Bot",
+        ["contact.bot_mark"] = "bot",
         ["contact.not_set"] = "Non renseigné",
         ["profile.title"] = "Mon profil",
         ["profile.save"] = "Enregistrer",
@@ -87,6 +89,7 @@ internal static partial class StringCatalog
         ["blacklist.add"] = "Bloquer",
         ["blacklist.add_title"] = "Liste noire",
         ["blacklist.add_body"] = "Masquer « {0} » : les messages et invitations seront reçus mais non affichés, sans notifications.",
+        ["blacklist.add_body_bot"] = "Bloquer le bot « {0} » : masquer localement et envoyer un claim concernant chaque serveur ou il est present.",
         ["blacklist.add_hint"] = "Ajouter à la liste noire",
         ["blacklist.unblock"] = "Débloquer",
         ["blacklist.blocked"] = "Cet utilisateur est sur la liste noire.",
@@ -119,6 +122,7 @@ internal static partial class StringCatalog
         ["settings.udp"] = "UDP (port local)",
         ["settings.lan"] = "Scan LAN",
         ["settings.routing"] = "Routage P2P",
+        ["settings.visible_for_search"] = "Visible dans la recherche",
         ["settings.economy"] = "Économie de données",
         ["settings.storage"] = "Stockage",
         ["settings.export_keys"] = "Exporter les clés",
@@ -127,6 +131,9 @@ internal static partial class StringCatalog
         ["settings.logs"] = "Journaux",
         ["settings.about"] = "À propos",
         ["settings.logout"] = "Se déconnecter",
+        ["settings.mlkem"] = "Chiffrement quantique (ML-KEM) a l'etablissement de session",
+        ["settings.lora_mlkem_warning"] =
+            "Sur LoRa, seule la négociation de session classique peut être disponible (sans ML-KEM).",
         ["settings.storage_mb"] = "Utilisé {0:0.0} Mo",
         ["settings.storage_gb"] = "Utilisé {0:0.0} Go",
         ["settings.about_body"] = "Messagerie mesh.\nVersion 0.1\nAndroid 5.0 (API 21)+",
@@ -164,6 +171,12 @@ internal static partial class StringCatalog
         ["chat.file_type_mismatch"] = "Le contenu ne correspond pas au type de fichier.",
         ["chat.file_empty"] = "Le fichier est vide.",
         ["chat.video"] = "Vidéo",
+        ["chat.video_meshtastic_forbidden"] =
+            "Les transferts binaires (voix, images, documents) ne sont pas autorisés via Meshtastic.",
+        ["chat.binary_meshtastic_forbidden"] =
+            "Les transferts binaires (voix, images, documents) ne sont pas autorisés via Meshtastic.",
+        ["chat.text_meshtastic_too_long"] =
+            "Sur Meshtastic, le texte est limité à {0} caractères. Raccourcissez le message pour l'envoyer.",
         ["chat.video_too_big"] = "La vidéo dépasse la limite. Compresser à {0} ?",
         ["chat.size"] = "Taille",
         ["chat.size_over"] = "Le fichier dépasse {0} Mo (maxDocumentBytes dans chat-media.json).",
@@ -196,6 +209,7 @@ internal static partial class StringCatalog
         ["chat.state.tap_download"] = "appuyer pour télécharger",
         ["chat.state.tap_play"] = "appuyer pour lire",
         ["chat.state.tap_row"] = "appuyer sur la ligne — Télécharger",
+        ["chat.scroll_new"] = "Nouveau",
         ["chat.kb"] = "{0} Ko",
         ["image.title"] = "Image",
         ["copied"] = "Copié",
@@ -343,5 +357,6 @@ internal static partial class StringCatalog
         ["chat.delivery_issue"] = "Problème de livraison du message en cours.",
         ["chat.mic_denied"] = "Pas d’autorisation pour enregistrer l’audio.",
         ["chat.voice_file_fail"] = "Impossible d’obtenir le fichier vocal enregistré.",
+        ["chat.voice_recording"] = "Enregistrement… {0}s",
     };
 }

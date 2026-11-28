@@ -15,8 +15,11 @@ internal sealed class VoiceRecordingSession : IAsyncDisposable
 #if ANDROID
     private global::Android.Media.MediaRecorder? _androidRecorder;
 #elif WINDOWS
-    private global::Windows.Media.Capture.MediaCapture? _windowsCapture;
-    private global::Windows.Media.Capture.LowLagMediaRecording? _windowsRecording;
+    private NAudio.Wave.WaveInEvent? _waveIn;
+    private NAudio.Wave.WaveFileWriter? _waveWriter;
+    private MemoryStream? _waveMs;
+    private readonly object _capLock = new();
+    private byte[]? _wavBytes;
 #elif IOS || MACCATALYST
     private AVFoundation.AVAudioRecorder? _iosRecorder;
 #endif
@@ -50,7 +53,7 @@ internal sealed class VoiceRecordingSession : IAsyncDisposable
         _recording = true;
         await Task.CompletedTask.ConfigureAwait(false);
 #elif WINDOWS
-        await MainThread.InvokeOnMainThreadAsync(StartWindowsAsync).ConfigureAwait(false);
+        await MainThread.InvokeOnMainThreadAsync(StartWindowsWaveIn).ConfigureAwait(false);
 #elif IOS || MACCATALYST
         StartIos();
         await Task.CompletedTask.ConfigureAwait(false);
@@ -80,7 +83,7 @@ internal sealed class VoiceRecordingSession : IAsyncDisposable
 
         await Task.CompletedTask.ConfigureAwait(false);
 #elif WINDOWS
-        await MainThread.InvokeOnMainThreadAsync(StopWindowsAsync).ConfigureAwait(false);
+        await MainThread.InvokeOnMainThreadAsync(StopWindowsWaveIn).ConfigureAwait(false);
         _recording = false;
 #elif IOS || MACCATALYST
         StopIos();
@@ -97,6 +100,8 @@ internal sealed class VoiceRecordingSession : IAsyncDisposable
         cancellationToken.ThrowIfCancellationRequested();
 #if ANDROID
         return ReadOggTempAsync(cancellationToken);
+#elif WINDOWS
+        return Task.FromResult(EncodeWindowsWavToOgg(_speechBitrateBps));
 #else
         return Task.FromResult(EncodeWavTempToOgg(_speechBitrateBps));
 #endif
@@ -124,7 +129,8 @@ internal sealed class VoiceRecordingSession : IAsyncDisposable
 
             ReleaseAndroid();
 #elif WINDOWS
-            await MainThread.InvokeOnMainThreadAsync(StopWindowsAsync).ConfigureAwait(false);
+            await MainThread.InvokeOnMainThreadAsync(StopWindowsWaveIn).ConfigureAwait(false);
+            _wavBytes = null;
 #elif IOS || MACCATALYST
             StopIos();
 #endif
@@ -145,41 +151,106 @@ internal sealed class VoiceRecordingSession : IAsyncDisposable
     public ValueTask DisposeAsync() => new(DiscardAsync());
 
 #if WINDOWS
-    private async Task StartWindowsAsync()
+    private void StartWindowsWaveIn()
     {
-        _tempPath = Path.Combine(FileSystem.CacheDirectory, $"voice_{DateTime.UtcNow.Ticks}.wav");
-        var folder = await global::Windows.Storage.StorageFolder.GetFolderFromPathAsync(FileSystem.CacheDirectory);
-        var file = await folder.CreateFileAsync(Path.GetFileName(_tempPath),
-            global::Windows.Storage.CreationCollisionOption.ReplaceExisting);
-        _tempPath = file.Path;
-
-        var capture = new global::Windows.Media.Capture.MediaCapture();
-        await capture.InitializeAsync(new global::Windows.Media.Capture.MediaCaptureInitializationSettings
+        _wavBytes = null;
+        _waveMs = new MemoryStream();
+        // 16 kHz mono PCM — same capture format as the working desktop client path.
+        var wf = new NAudio.Wave.WaveFormat(16_000, 16, 1);
+        _waveWriter = new NAudio.Wave.WaveFileWriter(_waveMs, wf);
+        _waveIn = new NAudio.Wave.WaveInEvent
         {
-            StreamingCaptureMode = global::Windows.Media.Capture.StreamingCaptureMode.Audio
-        });
-        var profile = global::Windows.Media.MediaProperties.MediaEncodingProfile.CreateWav(
-            global::Windows.Media.MediaProperties.AudioEncodingQuality.Medium);
-        profile.Audio = global::Windows.Media.MediaProperties.AudioEncodingProperties.CreatePcm(48_000, 1, 16);
-        _windowsCapture = capture;
-        _windowsRecording = await capture.PrepareLowLagRecordToStorageFileAsync(profile, file);
-        await _windowsRecording.StartAsync();
+            WaveFormat = wf,
+            BufferMilliseconds = 100
+        };
+        _waveIn.DataAvailable += OnWindowsDataAvailable;
+        _waveIn.StartRecording();
         _recording = true;
     }
 
-    private async Task StopWindowsAsync()
+    private void OnWindowsDataAvailable(object? sender, NAudio.Wave.WaveInEventArgs e)
+    {
+        if (e.BytesRecorded <= 0)
+            return;
+        lock (_capLock)
+        {
+            try
+            {
+                _waveWriter?.Write(e.Buffer, 0, e.BytesRecorded);
+            }
+            catch
+            {
+                // disposed
+            }
+        }
+    }
+
+    private void StopWindowsWaveIn()
     {
         try
         {
-            if (_windowsRecording != null)
-                await _windowsRecording.StopAsync();
+            if (_waveIn != null)
+            {
+                _waveIn.DataAvailable -= OnWindowsDataAvailable;
+                try
+                {
+                    _waveIn.StopRecording();
+                }
+                catch
+                {
+                    // ignore
+                }
+
+                _waveIn.Dispose();
+            }
         }
         finally
         {
-            _windowsRecording = null;
-            _windowsCapture?.Dispose();
-            _windowsCapture = null;
+            _waveIn = null;
+            lock (_capLock)
+            {
+                try
+                {
+                    _waveWriter?.Dispose();
+                }
+                catch
+                {
+                    // ignore
+                }
+
+                _waveWriter = null;
+                try
+                {
+                    // MemoryStream.ToArray works after WaveFileWriter closes the stream.
+                    _wavBytes = _waveMs?.ToArray();
+                }
+                catch
+                {
+                    _wavBytes = null;
+                }
+
+                try
+                {
+                    _waveMs?.Dispose();
+                }
+                catch
+                {
+                    // ignore
+                }
+
+                _waveMs = null;
+            }
         }
+    }
+
+    private VoiceRecordingResult EncodeWindowsWavToOgg(int bitrateBps)
+    {
+        var wav = _wavBytes;
+        _wavBytes = null;
+        if (wav == null || wav.Length < 44)
+            throw new InvalidOperationException("Не удалось получить записанный голосовой файл.");
+        var bytes = OggOpusEncoder.EncodeWavPcm(wav, bitrateBps);
+        return new VoiceRecordingResult { Bytes = bytes, FileName = OggFileName, MimeType = OggMime };
     }
 #endif
 

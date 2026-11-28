@@ -1,7 +1,6 @@
 using System.Collections.Concurrent;
 using System.Collections.ObjectModel;
 using System.Globalization;
-using TorgLink.Maui.Localization;
 using TorgLink.Maui.Services;
 using Microsoft.Extensions.Logging;
 using ShortP2P.Auth;
@@ -13,6 +12,8 @@ using ShortP2P.Client.Routing;
 using ShortP2P.Client.Services;
 using ShortP2P.Client.Services.MessengerServers;
 using ShortP2P.Discovery;
+using ShortP2P.Discovery.Profile;
+using TorgLink.Localization;
 
 namespace TorgLink.Maui;
 
@@ -75,7 +76,13 @@ public partial class ChatDetailPage : ContentPage
     private int _reloadEpoch;
     private int _scrollToEndEpoch;
     private int _viewEpoch;
+    /// <summary>True while the viewport should follow new messages to the bottom.</summary>
+    private bool _stickToBottom = true;
+    /// <summary>Ignores Scrolled while programmatic ScrollTo runs (avoids clearing stick).</summary>
+    private bool _ignoreScrollForStick;
     private VoiceRecordingSession? _voice;
+    private IDispatcherTimer? _voiceRecordingTimer;
+    private DateTime _voiceRecordingStartedUtc;
     private readonly Dictionary<int, string> _attachmentDurationLabels = new();
     private readonly ConcurrentDictionary<int, byte> _binaryDownloadsInFlight = new();
     private bool _hooksAttached;
@@ -86,7 +93,8 @@ public partial class ChatDetailPage : ContentPage
     private int _transportConnectGeneration;
 
     public ChatDetailPage(AuthService auth, ChatRepository repo, UserP2pRuntime p2p, ChatMediaOptions media,
-        P2pRoutingSettingsStore routingStore, MessengerServerManager messengerServers, PeerBlacklist blacklist,
+        P2pRoutingSettingsStore routingStore, MessengerServerManager messengerServers,
+        PeerBlacklist blacklist,
         ILogger<ChatDetailPage> logger)
     {
         InitializeComponent();
@@ -136,7 +144,7 @@ public partial class ChatDetailPage : ContentPage
             _logger.LogError(ex, "ChatDetailPage appear failed for chat {ChatId}", ChatId);
             try
             {
-                await DisplayAlert(Loc.T("error"), ex.Message, Loc.T("ok")).ConfigureAwait(true);
+                await DisplayAlert(LocalizationUtils.GetStringByKey("error"), ex.Message, LocalizationUtils.GetStringByKey("ok")).ConfigureAwait(true);
             }
             catch
             {
@@ -167,7 +175,7 @@ public partial class ChatDetailPage : ContentPage
     {
         if (chat == null)
         {
-            await DisplayAlert(Loc.T("error"), Loc.T("chat.not_found"), Loc.T("ok")).ConfigureAwait(true);
+            await DisplayAlert(LocalizationUtils.GetStringByKey("error"), LocalizationUtils.GetStringByKey("chat.not_found"), LocalizationUtils.GetStringByKey("ok")).ConfigureAwait(true);
             await Navigation.PopAsync().ConfigureAwait(true);
             return;
         }
@@ -178,19 +186,26 @@ public partial class ChatDetailPage : ContentPage
             return;
         }
 
-        Title = chat.PeerNickname;
-        PeerNameLabel.Text = chat.PeerNickname;
+        Title = FormatPeerTitle(chat);
+        PeerNameLabel.Text = FormatPeerTitle(chat);
         AvatarBadge.Apply(PeerAvatarFill, PeerAvatarInitials, PeerAvatarImage, chat.PeerNickname,
             chat.PeerNetworkIdShort, null);
-        PeerIdLabel.Text = Loc.Tf("chat.node", chat.PeerNetworkIdShort);
+        PeerIdLabel.Text = LocalizationUtils.GetStringByKeyWithFormat("chat.node", chat.PeerNetworkIdShort);
         await RefreshSidebarAsync().ConfigureAwait(true);
-        SetControlHint(BlockPeerButton, Loc.T("blacklist.add_hint"));
-        SetControlHint(ClearChatButton, Loc.T("chat.delete_hint"));
-        SetControlHint(EmergencyUntrustButton, Loc.T("safety.untrust_hint"));
-        MessageEntry.Placeholder = Loc.T("chat.message_ph");
+        _ = ApplyPeerAvatarBestEffortAsync(chat, chat.PeerNickname);
+        SetControlHint(BlockPeerButton, LocalizationUtils.GetStringByKey("blacklist.add_hint"));
+        SetControlHint(ClearChatButton, LocalizationUtils.GetStringByKey("chat.delete_hint"));
+        SetControlHint(EmergencyUntrustButton, LocalizationUtils.GetStringByKey("safety.untrust_hint"));
+        SetControlHint(PathModeButton, LocalizationUtils.GetStringByKey("chat.path_hint"));
+        SetControlHint(BotCommandsButton, LocalizationUtils.GetStringByKey("chat.commands"));
+        BotCommandsButton.IsVisible = chat.IsBot;
+        MessageEntry.Placeholder = LocalizationUtils.GetStringByKey("chat.message_ph");
+        ScrollToLatestLabel.Text = LocalizationUtils.GetStringByKey("chat.scroll_new");
         _chat = chat;
         _peerNetworkIdShort = chat.PeerNetworkIdShort;
         ActiveChatTracker.Set(chat.Id);
+        if (_boundChatId != chat.Id)
+            ResetScrollStickState(stickToBottom: true);
         RefreshSafetyLabel(chat);
         if (user == null)
         {
@@ -203,13 +218,19 @@ public partial class ChatDetailPage : ContentPage
 
         // Session object + history first; nickname / P2P handshake stay off the critical path.
         EnsureP2pSessionAttached(user, chat);
+        RefreshDeliveryPathButton();
+        RefreshSessionStatusLabel();
 
         if (_hooksAttached && _boundChatId == chat.Id)
         {
             EnsurePresenceRefreshTimerStarted();
             RefreshPeerPresenceLabel();
+            // Always refresh: a prior AppendLatest can be dropped while _isLoadingRows,
+            // leaving a non-empty stale list that would skip a Count==0-only reload.
             if (_messageItems.Count == 0)
                 await ReloadMessagesAsync().ConfigureAwait(true);
+            else
+                await AppendLatestMessagesAsync().ConfigureAwait(true);
             _ = TryRefreshPeerNicknameDisplayAsync(chat);
             return;
         }
@@ -227,7 +248,7 @@ public partial class ChatDetailPage : ContentPage
     /// </summary>
     private ChatP2PSession? EnsureP2pSessionAttached(UserEntity user, ChatEntity chat)
     {
-        if (_p2pSession != null)
+        if (_p2pSession != null && _boundChatId == chat.Id)
         {
             if (!_p2p.IsChatSessionStarted(chat.Id))
                 TryBeginConnectChatTransport(user, chat, _p2pSession);
@@ -236,6 +257,16 @@ public partial class ChatDetailPage : ContentPage
 
         try
         {
+            if (_p2pSession != null)
+            {
+                _p2pSession.MessagesChanged -= OnP2PMessagesChanged;
+                _p2pSession.TransferStateChanged -= OnP2PTransferStateChanged;
+                _p2pSession.DeliveryPathChanged -= OnDeliveryPathChanged;
+                _p2pSession.ActiveChannelChanged -= OnActiveChannelChanged;
+                _p2pSession.HandshakeStatusChanged -= OnHandshakeStatusChanged;
+                _p2pSession.MlKemSessionChanged -= OnMlKemSessionChanged;
+            }
+
             var uiSync = SynchronizationContext.Current;
             _p2pSession = _p2p.GetSession(chat, user, _auth, _repo, uiSync);
             if (_hooksAttached)
@@ -244,6 +275,16 @@ public partial class ChatDetailPage : ContentPage
                 _p2pSession.MessagesChanged += OnP2PMessagesChanged;
                 _p2pSession.TransferStateChanged -= OnP2PTransferStateChanged;
                 _p2pSession.TransferStateChanged += OnP2PTransferStateChanged;
+                _p2pSession.DeliveryPathChanged -= OnDeliveryPathChanged;
+                _p2pSession.DeliveryPathChanged += OnDeliveryPathChanged;
+                _p2pSession.ActiveChannelChanged -= OnActiveChannelChanged;
+                _p2pSession.ActiveChannelChanged += OnActiveChannelChanged;
+                _p2pSession.HandshakeStatusChanged -= OnHandshakeStatusChanged;
+                _p2pSession.HandshakeStatusChanged += OnHandshakeStatusChanged;
+                _p2pSession.MlKemSessionChanged -= OnMlKemSessionChanged;
+                _p2pSession.MlKemSessionChanged += OnMlKemSessionChanged;
+                RefreshSessionStatusLabel();
+                RefreshQuantumPeerMark();
             }
 
             TryBeginConnectChatTransport(user, chat, _p2pSession);
@@ -277,7 +318,7 @@ public partial class ChatDetailPage : ContentPage
 
             try
             {
-                await _p2p.EnsureStartedAsync(user).ConfigureAwait(false);
+                await P2pBootstrap.EnsureStartedAsync(_p2p, user, _logger).ConfigureAwait(false);
                 _p2p.MessengerServers?.Start();
             }
             catch (Exception ex)
@@ -290,8 +331,15 @@ public partial class ChatDetailPage : ContentPage
 
             var handshake = StartChatSessionIfNeededAsync(chat, session);
             var servers = MessengerServersBootstrap.EnsureRunningAsync(_p2p, _logger);
-            var publish = MessengerServersBootstrap.PublishChatRequestAsync(_p2p, chat.PeerNetworkIdShort, _logger);
-            await Task.WhenAll(handshake, servers, publish).ConfigureAwait(false);
+            if (chat.IsBot)
+            {
+                await Task.WhenAll(handshake, servers).ConfigureAwait(false);
+            }
+            else
+            {
+                var publish = MessengerServersBootstrap.PublishChatRequestAsync(_p2p, chat.PeerNetworkIdShort, _logger);
+                await Task.WhenAll(handshake, servers, publish).ConfigureAwait(false);
+            }
             // Do not PollEvents here: a second waiter used to replace the long-poll
             // waiter on the server and stall the next inbox message by ~25s.
         }
@@ -311,6 +359,11 @@ public partial class ChatDetailPage : ContentPage
             await session.StartAsync().ConfigureAwait(false);
             _p2p.MarkChatSessionStarted(chat.Id);
             AppLog.PeerConnected("chat-session", chat.PeerNetworkIdShort);
+            await MainThread.InvokeOnMainThreadAsync(() =>
+            {
+                if (_chat != null && _chat.Id == chat.Id)
+                    RefreshSafetyLabel(_chat);
+            }).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -319,7 +372,7 @@ public partial class ChatDetailPage : ContentPage
                 return;
             await MainThread.InvokeOnMainThreadAsync(async () =>
             {
-                await DisplayAlert(Loc.T("error"), Loc.Tf("chat.udp_fail", ex.Message), Loc.T("ok"))
+                await DisplayAlert(LocalizationUtils.GetStringByKey("error"), LocalizationUtils.GetStringByKeyWithFormat("chat.udp_fail", ex.Message), LocalizationUtils.GetStringByKey("ok"))
                     .ConfigureAwait(true);
             }).ConfigureAwait(false);
         }
@@ -382,18 +435,37 @@ public partial class ChatDetailPage : ContentPage
         _p2p.LocalScan.ClientsChanged += OnPeerLanPresenceChanged;
         _repo.PeerPublicKeyChanged -= OnPeerPublicKeyChanged;
         _repo.PeerPublicKeyChanged += OnPeerPublicKeyChanged;
+        _repo.PeerKeyChangeProposed -= OnPeerKeyChangeProposed;
+        _repo.PeerKeyChangeProposed += OnPeerKeyChangeProposed;
         _repo.ChatMessageAppended -= OnChatMessageAppended;
         _repo.ChatMessageAppended += OnChatMessageAppended;
         _repo.ChatMessageDeliveryChanged -= OnChatMessageDeliveryChanged;
         _repo.ChatMessageDeliveryChanged += OnChatMessageDeliveryChanged;
         _messengerServers.FailoverCompleted -= OnMessengerServerFailover;
         _messengerServers.FailoverCompleted += OnMessengerServerFailover;
+        var profiles = _p2p.PeerProfiles;
+        if (profiles != null)
+        {
+            profiles.Changed -= OnPeerProfileChanged;
+            profiles.Changed += OnPeerProfileChanged;
+        }
+
         if (_p2pSession != null)
         {
             _p2pSession.MessagesChanged -= OnP2PMessagesChanged;
             _p2pSession.MessagesChanged += OnP2PMessagesChanged;
             _p2pSession.TransferStateChanged -= OnP2PTransferStateChanged;
             _p2pSession.TransferStateChanged += OnP2PTransferStateChanged;
+            _p2pSession.DeliveryPathChanged -= OnDeliveryPathChanged;
+            _p2pSession.DeliveryPathChanged += OnDeliveryPathChanged;
+            _p2pSession.ActiveChannelChanged -= OnActiveChannelChanged;
+            _p2pSession.ActiveChannelChanged += OnActiveChannelChanged;
+            _p2pSession.HandshakeStatusChanged -= OnHandshakeStatusChanged;
+            _p2pSession.HandshakeStatusChanged += OnHandshakeStatusChanged;
+            _p2pSession.MlKemSessionChanged -= OnMlKemSessionChanged;
+            _p2pSession.MlKemSessionChanged += OnMlKemSessionChanged;
+            RefreshSessionStatusLabel();
+            RefreshQuantumPeerMark();
         }
 
         _hooksAttached = true;
@@ -407,15 +479,23 @@ public partial class ChatDetailPage : ContentPage
             ActiveChatTracker.Clear(_chat.Id);
         _p2p.LocalScan.ClientsChanged -= OnPeerLanPresenceChanged;
         _repo.PeerPublicKeyChanged -= OnPeerPublicKeyChanged;
+        _repo.PeerKeyChangeProposed -= OnPeerKeyChangeProposed;
         _repo.ChatMessageAppended -= OnChatMessageAppended;
         _repo.ChatMessageDeliveryChanged -= OnChatMessageDeliveryChanged;
         _messengerServers.FailoverCompleted -= OnMessengerServerFailover;
+        var profiles = _p2p.PeerProfiles;
+        if (profiles != null)
+            profiles.Changed -= OnPeerProfileChanged;
         if (_presenceRefreshTimer != null)
             _presenceRefreshTimer.Stop();
         if (_p2pSession != null)
         {
             _p2pSession.MessagesChanged -= OnP2PMessagesChanged;
             _p2pSession.TransferStateChanged -= OnP2PTransferStateChanged;
+            _p2pSession.DeliveryPathChanged -= OnDeliveryPathChanged;
+            _p2pSession.ActiveChannelChanged -= OnActiveChannelChanged;
+            _p2pSession.HandshakeStatusChanged -= OnHandshakeStatusChanged;
+            _p2pSession.MlKemSessionChanged -= OnMlKemSessionChanged;
         }
 
         _hooksAttached = false;
@@ -428,6 +508,43 @@ public partial class ChatDetailPage : ContentPage
         Interlocked.Increment(ref _viewEpoch);
     }
 
+    private void OnPeerProfileChanged(object? sender, PeerProfileChangedEventArgs e)
+    {
+        var peer = _peerNetworkIdShort;
+        var id = e.NetworkId.ToShortString();
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            _ = PatchSidebarAvatarAsync(id);
+            if (peer != null && ChatRepository.PeerNetworkIdsEqual(peer, id) && _chat != null)
+                _ = ApplyPeerAvatarBestEffortAsync(_chat, PeerNameLabel.Text ?? _chat.PeerNickname);
+        });
+    }
+
+    private async Task PatchSidebarAvatarAsync(string peerNetworkIdShort)
+    {
+        try
+        {
+            var store = _p2p.PeerProfiles;
+            if (store == null)
+                return;
+            var snap = await store.GetAsync(CompressedNetworkId.FromShortString(peerNetworkIdShort))
+                .ConfigureAwait(false);
+            await MainThread.InvokeOnMainThreadAsync(() =>
+            {
+                foreach (var row in _allSidebarRows)
+                {
+                    if (!ChatRepository.PeerNetworkIdsEqual(row.PeerNetworkIdShort, peerNetworkIdShort))
+                        continue;
+                    row.SetAvatar(snap?.Avatar);
+                }
+            }).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Patch sidebar avatar for {NetworkId}", peerNetworkIdShort);
+        }
+    }
+
     private void OnPeerLanPresenceChanged(object? sender, EventArgs e)
     {
         MainThread.BeginInvokeOnMainThread(RefreshPeerPresenceLabel);
@@ -435,7 +552,7 @@ public partial class ChatDetailPage : ContentPage
 
     private void RefreshSafetyLabel(ChatEntity chat)
     {
-        SafetyNumberLabel.Text = PeerSafetyUi.ChatPanel(_auth, chat);
+        SafetyNumberLabel.Text = PeerSafetyUi.ChatPanel(_auth, chat, _p2pSession);
     }
 
     private static void SetControlHint(View view, string text)
@@ -443,6 +560,43 @@ public partial class ChatDetailPage : ContentPage
         ToolTipProperties.SetText(view, text);
         SemanticProperties.SetHint(view, text);
         SemanticProperties.SetDescription(view, text);
+    }
+
+    private async void OnBotCommandsClicked(object? sender, EventArgs e)
+    {
+        if (_chat is not { IsBot: true })
+            return;
+
+        var sync = _p2p.MessengerServers;
+        if (sync == null)
+        {
+            await DisplayAlert(
+                LocalizationUtils.GetStringByKey("chat.commands_title"),
+                LocalizationUtils.GetStringByKey("chat.commands_fail"),
+                LocalizationUtils.GetStringByKey("ok")).ConfigureAwait(true);
+            return;
+        }
+
+        try
+        {
+            await MessengerServersBootstrap.EnsureRunningAsync(_p2p, _logger).ConfigureAwait(true);
+            var commands = await sync.FetchBotCommandsAsync(_chat.PeerNetworkIdShort).ConfigureAwait(true);
+            var body = commands.Count == 0
+                ? LocalizationUtils.GetStringByKey("chat.commands_empty")
+                : BotCommandText.FormatList(commands);
+            await DisplayAlert(
+                LocalizationUtils.GetStringByKey("chat.commands_title"),
+                body,
+                LocalizationUtils.GetStringByKey("ok")).ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Bot commands failed for chat {ChatId}", _chat.Id);
+            await DisplayAlert(
+                LocalizationUtils.GetStringByKey("chat.commands_title"),
+                LocalizationUtils.GetStringByKey("chat.commands_fail"),
+                LocalizationUtils.GetStringByKey("ok")).ConfigureAwait(true);
+        }
     }
 
     private void OnPeerPublicKeyChanged(object? sender, PeerPublicKeyChangedEventArgs e)
@@ -455,15 +609,34 @@ public partial class ChatDetailPage : ContentPage
             if (fresh != null)
             {
                 _chat = fresh;
-                Title = fresh.PeerNickname;
-                PeerNameLabel.Text = fresh.PeerNickname;
+                Title = FormatPeerTitle(fresh);
+                PeerNameLabel.Text = FormatPeerTitle(fresh);
+                BotCommandsButton.IsVisible = fresh.IsBot;
                 RefreshSafetyLabel(fresh);
             }
 
             await DisplayAlert(
-                Loc.T("safety.key_change_title"),
-                Loc.Tf("safety.key_change_body", e.PeerNickname, e.PreviousSafetyNumber, e.NewSafetyNumber),
-                Loc.T("ok")).ConfigureAwait(true);
+                LocalizationUtils.GetStringByKey("safety.key_change_title"),
+                LocalizationUtils.GetStringByKeyWithFormat("safety.key_change_body", e.PeerNickname, e.PreviousSafetyNumber, e.NewSafetyNumber),
+                LocalizationUtils.GetStringByKey("ok")).ConfigureAwait(true);
+        });
+    }
+
+    private void OnPeerKeyChangeProposed(object? sender, PeerKeyChangeProposedEventArgs e)
+    {
+        if (e.ChatId != ChatId)
+            return;
+        MainThread.BeginInvokeOnMainThread(async () =>
+        {
+            var accept = await DisplayAlert(
+                LocalizationUtils.GetStringByKey("safety.key_change_title"),
+                PeerSafetyDisplay.FormatKeyChangeProposal(e),
+                LocalizationUtils.GetStringByKey("ok"),
+                LocalizationUtils.GetStringByKey("cancel")).ConfigureAwait(true);
+            if (accept)
+                await _repo.AcceptPendingPeerKeyChangeAsync(e.ChatId).ConfigureAwait(true);
+            else
+                _repo.RejectPendingPeerKeyChange(e.ChatId);
         });
     }
 
@@ -473,7 +646,7 @@ public partial class ChatDetailPage : ContentPage
             return;
         MainThread.BeginInvokeOnMainThread(async () =>
         {
-            await DisplayAlert(Loc.T("safety.mesh_title"), Loc.T("safety.mesh_body"), Loc.T("ok"))
+            await DisplayAlert(LocalizationUtils.GetStringByKey("safety.mesh_title"), LocalizationUtils.GetStringByKey("safety.mesh_body"), LocalizationUtils.GetStringByKey("ok"))
                 .ConfigureAwait(true);
         });
     }
@@ -571,7 +744,20 @@ public partial class ChatDetailPage : ContentPage
                     _loadedRows.Insert(0, row);
                 foreach (var row in missing.OrderBy(m => m.SentUtcTicks).ThenBy(m => m.Id))
                     _messageItems.Add(BuildMessageRowVm(row));
-                ScrollMessagesToEnd();
+
+                // Own send always returns to the bottom; inbound respects stick-to-bottom.
+                if (missing.Any(m => m.Outgoing) || _stickToBottom)
+                {
+                    _stickToBottom = true;
+                    ApplyItemsUpdatingScrollMode();
+                    SetScrollToLatestVisible(false);
+                    ScrollMessagesToEnd();
+                }
+                else
+                {
+                    ApplyItemsUpdatingScrollMode();
+                    SetScrollToLatestVisible(true);
+                }
             }
 
             if (MainThread.IsMainThread)
@@ -647,7 +833,11 @@ public partial class ChatDetailPage : ContentPage
                 _loadedRows.AddRange(pageDesc);
                 var chronological = pageDesc.Reverse().ToList();
                 SyncMessageItems(chronological);
-                ScrollMessagesToEnd();
+                if (_stickToBottom)
+                {
+                    SetScrollToLatestVisible(false);
+                    ScrollMessagesToEnd();
+                }
             }
 
             if (MainThread.IsMainThread)
@@ -698,6 +888,11 @@ public partial class ChatDetailPage : ContentPage
         finally
         {
             _isLoadingRows = false;
+            if (_pendingReload)
+            {
+                _pendingReload = false;
+                await ReloadMessagesAsync().ConfigureAwait(true);
+            }
         }
     }
 
@@ -706,25 +901,84 @@ public partial class ChatDetailPage : ContentPage
         if (_messageItems.Count == 0)
             return;
 
+        ApplyItemsUpdatingScrollMode();
+
         // CollectionView often ignores ScrollTo until items are measured; defer + retry.
+        // Index-based End + MakeVisible passes are needed so the last bubble is fully on screen
+        // (item-reference ScrollTo frequently stops one row short on WinUI).
         var epoch = Interlocked.Increment(ref _scrollToEndEpoch);
+        _ignoreScrollForStick = true;
         Dispatcher.Dispatch(async () =>
         {
-            for (var attempt = 0; attempt < 3; attempt++)
+            try
             {
-                await Task.Delay(attempt == 0 ? 16 : 48).ConfigureAwait(true);
-                if (epoch != Volatile.Read(ref _scrollToEndEpoch) || _messageItems.Count == 0)
-                    return;
-                try
+                for (var attempt = 0; attempt < 6; attempt++)
                 {
-                    MessagesCollection.ScrollTo(_messageItems[^1], position: ScrollToPosition.End, animate: false);
+                    await Task.Delay(attempt == 0 ? 16 : 40).ConfigureAwait(true);
+                    if (epoch != Volatile.Read(ref _scrollToEndEpoch) || _messageItems.Count == 0)
+                        return;
+                    try
+                    {
+                        var lastIndex = _messageItems.Count - 1;
+                        MessagesCollection.ScrollTo(lastIndex, position: ScrollToPosition.End, animate: false);
+                        if (attempt is 2 or 4)
+                        {
+                            MessagesCollection.ScrollTo(lastIndex, position: ScrollToPosition.MakeVisible, animate: false);
+                            MessagesCollection.ScrollTo(lastIndex, position: ScrollToPosition.End, animate: false);
+                        }
+                    }
+                    catch
+                    {
+                        // CollectionView may not be ready yet.
+                    }
                 }
-                catch
+            }
+            finally
+            {
+                if (epoch == Volatile.Read(ref _scrollToEndEpoch))
                 {
-                    // CollectionView may not be ready yet.
+                    _ignoreScrollForStick = false;
+                    // Hide after the jump finished (button press or forced stick scroll).
+                    if (_stickToBottom)
+                        SetScrollToLatestVisible(false);
                 }
             }
         });
+    }
+
+    private void ApplyItemsUpdatingScrollMode()
+    {
+        MessagesCollection.ItemsUpdatingScrollMode = _stickToBottom
+            ? ItemsUpdatingScrollMode.KeepLastItemInView
+            : ItemsUpdatingScrollMode.KeepScrollOffset;
+    }
+
+    private void ResetScrollStickState(bool stickToBottom)
+    {
+        _stickToBottom = stickToBottom;
+        ApplyItemsUpdatingScrollMode();
+        SetScrollToLatestVisible(false);
+    }
+
+    private void SetScrollToLatestVisible(bool visible)
+    {
+        if (ScrollToLatestButton.IsVisible == visible)
+            return;
+        ScrollToLatestButton.IsVisible = visible;
+        if (visible)
+        {
+            ScrollToLatestButton.BackgroundColor = TorgLinkTheme.OutgoingBubble;
+            ScrollToLatestLabel.Text = LocalizationUtils.GetStringByKey("chat.scroll_new");
+        }
+    }
+
+    private void OnScrollToLatestClicked(object? sender, EventArgs e)
+    {
+        // Keep the button until scroll-to-bottom completes; OnMessagesScrolled also
+        // hides it when the user reaches the bottom manually.
+        _stickToBottom = true;
+        ApplyItemsUpdatingScrollMode();
+        ScrollMessagesToEnd();
     }
 
     private void SyncMessageItems(IReadOnlyList<ChatMessageEntity> page)
@@ -778,7 +1032,9 @@ public partial class ChatDetailPage : ContentPage
         a.MessageId == b.MessageId &&
         a.DeliveryStatus == b.DeliveryStatus &&
         a.TextBody == b.TextBody &&
-        a.FileBodyText == b.FileBodyText &&
+        a.AttachmentIconSource == b.AttachmentIconSource &&
+        a.FileTitleText == b.FileTitleText &&
+        a.FileMetaText == b.FileMetaText &&
         a.IsImage == b.IsImage &&
         a.IsFile == b.IsFile &&
         a.IsVoice == b.IsVoice &&
@@ -842,9 +1098,9 @@ public partial class ChatDetailPage : ContentPage
 
             var stateText = state switch
             {
-                ChatTransferState.Transferring => Loc.T("chat.state.loading"),
-                ChatTransferState.Failed => Loc.T("chat.state.failed"),
-                _ => Loc.T("chat.state.tap_download")
+                ChatTransferState.Transferring => LocalizationUtils.GetStringByKey("chat.state.loading"),
+                ChatTransferState.Failed => LocalizationUtils.GetStringByKey("chat.state.failed"),
+                _ => LocalizationUtils.GetStringByKey("chat.state.tap_download")
             };
             return AttachmentPlaceholder(m, isTransferOffer: true, ds, color, show, glyph, gColor, bubble, ts, stateText);
         }
@@ -891,46 +1147,46 @@ public partial class ChatDetailPage : ContentPage
         var isVideo = IsVideoAttachment(m);
         var voiceReady = isVoice && IsVoiceLocallyAvailable(m, isTransferOffer);
         var duration = TryFormatLocalMediaDuration(m);
-        var nameWithDuration = duration == null ? name : $"{name} · {duration}";
-        
-        string fileBody;
-        string mediaIcon;
-        
+        var title = duration == null ? name : $"{name} · {duration}";
+        var sizeLabel = LocalizationUtils.GetStringByKeyWithFormat("chat.kb", kb);
+
+        string iconSource;
+        string meta;
         if (isVoice)
         {
-            // Audio: show play icon if ready, download icon if not
-            mediaIcon = voiceReady ? "▶️" : "⬇️";
+            // MauiImage (svg→png): reference like icon_bluetooth.png
+            iconSource = voiceReady ? "attach_audio_play.png" : "attach_audio_download.png";
             var hint = voiceReady
-                ? Loc.T("chat.state.tap_play")
-                : (stateText ?? Loc.T("chat.state.tap_download"));
-            fileBody = $"{mediaIcon} {nameWithDuration} · {Loc.Tf("chat.kb", kb)} · {hint}";
+                ? LocalizationUtils.GetStringByKey("chat.state.tap_play")
+                : (stateText ?? LocalizationUtils.GetStringByKey("chat.state.tap_download"));
+            meta = $"{sizeLabel} · {hint}";
         }
         else if (isVideo)
         {
-            // Video: show video camera icon
-            mediaIcon = "🎬";
-            var action = stateText ?? Loc.T("chat.state.tap_row");
-            fileBody = $"{mediaIcon} {nameWithDuration} · {Loc.Tf("chat.kb", kb)} · {action}";
+            iconSource = "attach_video.png";
+            var action = stateText ?? LocalizationUtils.GetStringByKey("chat.state.tap_row");
+            meta = $"{sizeLabel} · {action}";
         }
         else if (isImage)
         {
-            // Image: show picture icon
-            mediaIcon = "🖼️";
-            var action = stateText ?? Loc.T("chat.state.tap_row");
-            fileBody = $"{mediaIcon} {nameWithDuration} · {Loc.Tf("chat.kb", kb)} · {action}";
+            iconSource = "attach_image.png";
+            var action = stateText ?? LocalizationUtils.GetStringByKey("chat.state.tap_row");
+            meta = $"{sizeLabel} · {action}";
         }
         else
         {
-            // Other files
-            var action = stateText ?? Loc.T("chat.state.tap_row");
-            fileBody = $"{nameWithDuration} · {Loc.Tf("chat.kb", kb)} · {action}";
+            iconSource = "attach_file.png";
+            var action = stateText ?? LocalizationUtils.GetStringByKey("chat.state.tap_row");
+            meta = $"{sizeLabel} · {action}";
         }
 
         return new MessageRowVm
         {
             CaptionLine = AttachmentKindCaption(m),
             TextBody = "",
-            FileBodyText = fileBody,
+            AttachmentIconSource = iconSource,
+            FileTitleText = title,
+            FileMetaText = meta,
             ShowTextBody = false,
             IsImage = isImage,
             IsFile = true,
@@ -1001,12 +1257,12 @@ public partial class ChatDetailPage : ContentPage
     private static string AttachmentKindCaption(ChatMessageEntity m)
     {
         if (IsVoiceAttachment(m))
-            return Loc.T("chat.caption.voice");
+            return LocalizationUtils.GetStringByKey("chat.caption.voice");
         if (IsImageAttachment(m))
-            return Loc.T("chat.caption.image");
+            return LocalizationUtils.GetStringByKey("chat.caption.image");
         if (IsVideoAttachment(m))
-            return Loc.T("chat.caption.video");
-        return Loc.T("chat.caption.file");
+            return LocalizationUtils.GetStringByKey("chat.caption.video");
+        return LocalizationUtils.GetStringByKey("chat.caption.file");
     }
 
     private static bool IsVoiceAttachment(ChatMessageEntity m) =>
@@ -1032,6 +1288,36 @@ public partial class ChatDetailPage : ContentPage
         // Chronological list: load older messages when the user scrolls near the top.
         if (!_suppressLoadMore && e.FirstVisibleItemIndex <= 1 && e.VerticalDelta < 0)
             _ = LoadNextMessagesPageAsync();
+
+        if (_ignoreScrollForStick)
+            return;
+
+        var count = _messageItems.Count;
+        if (count == 0)
+            return;
+
+        // Near the newest rows: resume auto-scroll and hide the New affordance.
+        var nearBottom = e.LastVisibleItemIndex >= Math.Max(0, count - 1);
+        if (nearBottom)
+        {
+            if (!_stickToBottom)
+            {
+                _stickToBottom = true;
+                ApplyItemsUpdatingScrollMode();
+            }
+            SetScrollToLatestVisible(false);
+            return;
+        }
+
+        // User moved away from the bottom (mouse / touch / scrollbar).
+        if (Math.Abs(e.VerticalDelta) > 0.5)
+        {
+            if (_stickToBottom)
+            {
+                _stickToBottom = false;
+                ApplyItemsUpdatingScrollMode();
+            }
+        }
     }
 
     private async void OnMessagesRemainingItemsThresholdReached(object? sender, EventArgs e)
@@ -1054,34 +1340,48 @@ public partial class ChatDetailPage : ContentPage
         var session = EnsureP2pSessionAttached(user, chat);
         if (session == null)
         {
-            ShowDeliveryIssue(Loc.T("error"));
+            ShowDeliveryIssue(LocalizationUtils.GetStringByKey("error"));
+            return;
+        }
+
+        if (session.IsMeshtasticPathActive && text.Length > ChatP2PSession.MaxMeshtasticMessageChars)
+        {
+            var warn = string.Format(
+                LocalizationUtils.GetStringByKey("chat.text_meshtastic_too_long"),
+                ChatP2PSession.MaxMeshtasticMessageChars);
+            await DisplayAlert(LocalizationUtils.GetStringByKey("chat.send"), warn, LocalizationUtils.GetStringByKey("ok"))
+                .ConfigureAwait(true);
+            ShowDeliveryIssue(warn);
             return;
         }
 
         ClearDeliveryIssue();
-        MessageEntry.Text = string.Empty;
+        _stickToBottom = true;
+        SetScrollToLatestVisible(false);
 
         try
         {
             // Queues to SQLite + outbound worker; must not wait for handshake.
             await session.SendTextAsync(text).ConfigureAwait(true);
+            // Clear only after persist — premature clear + dropped AppendLatest looked like "send ate text".
+            MessageEntry.Text = string.Empty;
             ClearDeliveryIssue();
         }
         catch (OutboundMessageQueuedException ex)
         {
             _logger.LogInformation(ex, "Message queued until peer is on LAN");
+            MessageEntry.Text = string.Empty;
             ShowDeliveryIssue(ex.Message);
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Send message failed");
-            MessageEntry.Text = text;
             ShowDeliveryIssue(ex.Message);
         }
         finally
         {
-            // Cheap tail refresh — full ReloadMessages would contend with DB / UI.
-            await AppendLatestMessagesAsync().ConfigureAwait(true);
+            // Full reload is safer than AppendLatest (which no-ops while _isLoadingRows).
+            await ReloadMessagesAsync().ConfigureAwait(true);
         }
     }
 
@@ -1089,8 +1389,14 @@ public partial class ChatDetailPage : ContentPage
     {
         var user = _auth.CurrentUser;
         var chat = _chat;
-        if (user == null || chat == null || EnsureP2pSessionAttached(user, chat) == null)
+        if (user == null || chat == null)
             return;
+
+        if (EnsureP2pSessionAttached(user, chat) == null)
+        {
+            ShowDeliveryIssue(LocalizationUtils.GetStringByKey("error"));
+            return;
+        }
 
         if (_voice is { IsRecording: true })
         {
@@ -1110,10 +1416,19 @@ public partial class ChatDetailPage : ContentPage
     private async Task StartVoiceRecordingAsync()
     {
         ClearDeliveryIssue();
+        if (_p2pSession?.IsMeshtasticPathActive == true)
+        {
+            var msg = LocalizationUtils.GetStringByKey("chat.binary_meshtastic_forbidden");
+            await DisplayAlert(LocalizationUtils.GetStringByKey("chat.voice"), msg, LocalizationUtils.GetStringByKey("ok"))
+                .ConfigureAwait(true);
+            ShowDeliveryIssue(msg);
+            return;
+        }
+
         var mic = await Permissions.RequestAsync<Permissions.Microphone>().ConfigureAwait(true);
         if (mic != PermissionStatus.Granted)
         {
-            ShowDeliveryIssue(Loc.T("chat.mic_denied"));
+            ShowDeliveryIssue(LocalizationUtils.GetStringByKey("chat.mic_denied"));
             return;
         }
 
@@ -1124,6 +1439,7 @@ public partial class ChatDetailPage : ContentPage
             await _voice.StartAsync(MediaEconomy.SpeechBitrate(_p2p)).ConfigureAwait(true);
             VoiceButton.Text = "■";
             VoiceButton.TextColor = Colors.Red;
+            BeginVoiceRecordingIndicator();
         }
         catch (Exception ex)
         {
@@ -1135,12 +1451,13 @@ public partial class ChatDetailPage : ContentPage
 
     private async Task StopVoiceRecordingAndSendAsync()
     {
+        EndVoiceRecordingIndicator();
         ResetVoiceButton();
         var voice = _voice;
         _voice = null;
         if (voice == null)
         {
-            ShowDeliveryIssue(Loc.T("chat.voice_file_fail"));
+            ShowDeliveryIssue(LocalizationUtils.GetStringByKey("chat.voice_file_fail"));
             return;
         }
 
@@ -1185,6 +1502,7 @@ public partial class ChatDetailPage : ContentPage
         finally
         {
             _voice = null;
+            EndVoiceRecordingIndicator();
             ResetVoiceButton();
         }
     }
@@ -1193,6 +1511,40 @@ public partial class ChatDetailPage : ContentPage
     {
         VoiceButton.Text = "🎤";
         VoiceButton.TextColor = TorgLinkTheme.Text;
+    }
+
+    private void BeginVoiceRecordingIndicator()
+    {
+        _voiceRecordingStartedUtc = DateTime.UtcNow;
+        VoiceRecordingBar.IsVisible = true;
+        UpdateVoiceRecordingLabel();
+        _voiceRecordingTimer?.Stop();
+        _voiceRecordingTimer = Dispatcher.CreateTimer();
+        _voiceRecordingTimer.Interval = TimeSpan.FromSeconds(1);
+        _voiceRecordingTimer.Tick += OnVoiceRecordingTimerTick;
+        _voiceRecordingTimer.Start();
+    }
+
+    private void EndVoiceRecordingIndicator()
+    {
+        if (_voiceRecordingTimer != null)
+        {
+            _voiceRecordingTimer.Tick -= OnVoiceRecordingTimerTick;
+            _voiceRecordingTimer.Stop();
+            _voiceRecordingTimer = null;
+        }
+
+        VoiceRecordingBar.IsVisible = false;
+        VoiceRecordingLabel.Text = string.Empty;
+    }
+
+    private void OnVoiceRecordingTimerTick(object? sender, EventArgs e) => UpdateVoiceRecordingLabel();
+
+    private void UpdateVoiceRecordingLabel()
+    {
+        var seconds = Math.Max(0, (int)(DateTime.UtcNow - _voiceRecordingStartedUtc).TotalSeconds);
+        VoiceRecordingLabel.Text =
+            LocalizationUtils.GetStringByKeyWithFormat("chat.voice_recording", seconds);
     }
 
     private async void OnMessageRowTapped(object? sender, TappedEventArgs e)
@@ -1233,7 +1585,7 @@ public partial class ChatDetailPage : ContentPage
             var row = await _repo.GetMessageAsync(messageId).ConfigureAwait(true);
             if (row == null)
             {
-                await DisplayAlert(Loc.T("chat.file"), Loc.T("chat.msg_missing"), Loc.T("ok")).ConfigureAwait(true);
+                await DisplayAlert(LocalizationUtils.GetStringByKey("chat.file"), LocalizationUtils.GetStringByKey("chat.msg_missing"), LocalizationUtils.GetStringByKey("ok")).ConfigureAwait(true);
                 return;
             }
 
@@ -1250,7 +1602,7 @@ public partial class ChatDetailPage : ContentPage
                                        !string.IsNullOrWhiteSpace(row.TransferId);
                 if (!canDownloadVoice)
                 {
-                    await DisplayAlert(Loc.T("chat.voice"), Loc.T("chat.voice_not_ready"), Loc.T("ok"))
+                    await DisplayAlert(LocalizationUtils.GetStringByKey("chat.voice"), LocalizationUtils.GetStringByKey("chat.voice_not_ready"), LocalizationUtils.GetStringByKey("ok"))
                         .ConfigureAwait(true);
                     return;
                 }
@@ -1270,7 +1622,7 @@ public partial class ChatDetailPage : ContentPage
                                   !string.IsNullOrWhiteSpace(row.TransferId);
             if (!canDownloadFile)
             {
-                await DisplayAlert(Loc.T("chat.file"), Loc.T("chat.msg_missing"), Loc.T("ok")).ConfigureAwait(true);
+                await DisplayAlert(LocalizationUtils.GetStringByKey("chat.file"), LocalizationUtils.GetStringByKey("chat.msg_missing"), LocalizationUtils.GetStringByKey("ok")).ConfigureAwait(true);
                 return;
             }
 
@@ -1279,7 +1631,7 @@ public partial class ChatDetailPage : ContentPage
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Open attachment failed");
-            await DisplayAlert(Loc.T("chat.file"), ex.Message, Loc.T("ok")).ConfigureAwait(true);
+            await DisplayAlert(LocalizationUtils.GetStringByKey("chat.file"), ex.Message, LocalizationUtils.GetStringByKey("ok")).ConfigureAwait(true);
         }
     }
 
@@ -1334,10 +1686,14 @@ public partial class ChatDetailPage : ContentPage
             AppLog.BinaryLoaded("play-voice", "voice.ogg", oggBytes.Length);
             await VoiceMessagePlayer.PlayAsync(oggBytes, _logger).ConfigureAwait(true);
         }
+        catch (OperationCanceledException)
+        {
+            // Stop() from OnDisappearing / newer tap — no alert.
+        }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Voice play failed");
-            await DisplayAlert(Loc.T("chat.playback"), ex.Message, Loc.T("ok")).ConfigureAwait(true);
+            await DisplayAlert(LocalizationUtils.GetStringByKey("chat.playback"), ex.Message, LocalizationUtils.GetStringByKey("ok")).ConfigureAwait(true);
         }
     }
 
@@ -1345,7 +1701,7 @@ public partial class ChatDetailPage : ContentPage
     {
         if (row.ImageBlob is not { Length: > 0 } blob)
         {
-            await DisplayAlert(Loc.T("chat.file"), Loc.T("chat.msg_missing"), Loc.T("ok")).ConfigureAwait(true);
+            await DisplayAlert(LocalizationUtils.GetStringByKey("chat.file"), LocalizationUtils.GetStringByKey("chat.msg_missing"), LocalizationUtils.GetStringByKey("ok")).ConfigureAwait(true);
             return;
         }
 
@@ -1385,7 +1741,7 @@ public partial class ChatDetailPage : ContentPage
 
         await Share.Default.RequestAsync(new ShareFileRequest
         {
-            Title = Loc.T("chat.save_doc"),
+            Title = LocalizationUtils.GetStringByKey("chat.save_doc"),
             File = new ShareFile(temp)
         }).ConfigureAwait(true);
     }
@@ -1412,6 +1768,8 @@ public partial class ChatDetailPage : ContentPage
                 rows.Add(new ChatListRowVm(c, last, _p2p.LocalScan.IsPeerSeenRecentlyOnLan(c.PeerNetworkIdShort)));
             }
 
+            await ApplySidebarAvatarsAsync(rows).ConfigureAwait(false);
+
             await MainThread.InvokeOnMainThreadAsync(() =>
             {
                 _allSidebarRows.Clear();
@@ -1424,6 +1782,27 @@ public partial class ChatDetailPage : ContentPage
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Refresh sidebar for chat detail page");
+        }
+    }
+
+    private async Task ApplySidebarAvatarsAsync(IReadOnlyList<ChatListRowVm> rows)
+    {
+        var store = _p2p.PeerProfiles;
+        if (store == null || rows.Count == 0)
+            return;
+
+        foreach (var row in rows)
+        {
+            try
+            {
+                var snap = await store.GetAsync(CompressedNetworkId.FromShortString(row.PeerNetworkIdShort))
+                    .ConfigureAwait(false);
+                row.SetAvatar(snap?.Avatar);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Load sidebar peer avatar for {NetworkId}", row.PeerNetworkIdShort);
+            }
         }
     }
 
@@ -1444,6 +1823,7 @@ public partial class ChatDetailPage : ContentPage
             Host = this,
             Auth = _auth,
             Blacklist = _blacklist,
+            MessengerServers = _messengerServers,
             Chats = _repo,
             P2p = _p2p,
             AfterChange = RefreshSidebarAsync,
@@ -1498,9 +1878,11 @@ public partial class ChatDetailPage : ContentPage
             chat.PeerNickname = display;
         }
 
-        Title = display;
-        PeerNameLabel.Text = display;
-        PeerIdLabel.Text = Loc.Tf("chat.node", id);
+        if (_chat != null)
+            _chat.PeerNickname = display;
+        Title = _chat != null ? FormatPeerTitle(_chat) : display;
+        PeerNameLabel.Text = Title;
+        PeerIdLabel.Text = LocalizationUtils.GetStringByKeyWithFormat("chat.node", id);
         RefreshSafetyLabel(chat);
         await ApplyPeerAvatarBestEffortAsync(chat, display).ConfigureAwait(true);
     }
@@ -1517,11 +1899,11 @@ public partial class ChatDetailPage : ContentPage
                     .ConfigureAwait(true);
                 if (snap != null)
                 {
-                    if (snap.Avatar is { Length: > PeerProfileLimits.MaxAvatarBytes })
+                    if (snap.Avatar is { Length: > PeerProfileLimits.MaxAvatarDisplayBytes })
                     {
                         _logger.LogWarning(
                             "Peer avatar for {NetworkId} is {Bytes} bytes (max {Max}); ignoring oversized blob",
-                            chat.PeerNetworkIdShort, snap.Avatar.Length, PeerProfileLimits.MaxAvatarBytes);
+                            chat.PeerNetworkIdShort, snap.Avatar.Length, PeerProfileLimits.MaxAvatarDisplayBytes);
                     }
                     else
                         avatar = snap.Avatar;
@@ -1679,14 +2061,14 @@ public partial class ChatDetailPage : ContentPage
 
         var online = _p2p.LocalScan.IsPeerSeenRecentlyOnLan(_peerNetworkIdShort);
         PeerPresenceDot.Fill = online ? TorgLinkTheme.Online : TorgLinkTheme.Danger;
-        PeerStatusLabel.Text = online ? Loc.T("online") : Loc.T("offline");
+        PeerStatusLabel.Text = online ? LocalizationUtils.GetStringByKey("online") : LocalizationUtils.GetStringByKey("offline");
         PeerStatusLabel.TextColor = online ? TorgLinkTheme.Online : TorgLinkTheme.Muted;
     }
 
     private void ShowDeliveryIssue(string message)
     {
         DeliveryIssueLabel.Text = string.IsNullOrWhiteSpace(message)
-            ? Loc.T("chat.delivery_issue")
+            ? LocalizationUtils.GetStringByKey("chat.delivery_issue")
             : message.Trim();
         DeliveryIssueLabel.IsVisible = true;
     }
@@ -1697,6 +2079,115 @@ public partial class ChatDetailPage : ContentPage
         DeliveryIssueLabel.IsVisible = false;
     }
 
+    private void RefreshDeliveryPathButton()
+    {
+        var path = _p2pSession?.DeliveryPath ?? ChatDeliveryPath.Auto;
+        PathModeButton.Text = path switch
+        {
+            ChatDeliveryPath.Server => LocalizationUtils.GetStringByKey("chat.path_server"),
+            ChatDeliveryPath.Mesh => LocalizationUtils.GetStringByKey("chat.path_mesh"),
+            _ => LocalizationUtils.GetStringByKey("chat.path_auto")
+        };
+    }
+
+    private void OnDeliveryPathChanged(object? sender, EventArgs e)
+    {
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            RefreshDeliveryPathButton();
+            if (_chat != null)
+                RefreshSafetyLabel(_chat);
+        });
+    }
+
+    private void OnActiveChannelChanged(object? sender, EventArgs e)
+    {
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            if (_chat != null)
+                RefreshSafetyLabel(_chat);
+        });
+    }
+
+    private void OnHandshakeStatusChanged(object? sender, EventArgs e)
+    {
+        MainThread.BeginInvokeOnMainThread(RefreshSessionStatusLabel);
+    }
+
+    private void OnMlKemSessionChanged(object? sender, EventArgs e)
+    {
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            if (_chat != null && _p2pSession != null)
+                _chat.MlKemSessionVerified = _p2pSession.IsMlKemSession;
+            RefreshQuantumPeerMark();
+            foreach (var row in _allSidebarRows)
+                row.NotifyDisplayNameChanged();
+        });
+    }
+
+    private static string FormatPeerTitle(ChatEntity chat) =>
+        chat.MlKemSessionVerified ? chat.PeerNickname + " ⚛️" : chat.PeerNickname;
+
+    private void RefreshQuantumPeerMark()
+    {
+        if (_chat == null)
+            return;
+        if (_p2pSession != null)
+            _chat.MlKemSessionVerified = _p2pSession.IsMlKemSession || _chat.MlKemSessionVerified;
+        Title = FormatPeerTitle(_chat);
+        PeerNameLabel.Text = FormatPeerTitle(_chat);
+    }
+
+    private void RefreshSessionStatusLabel()
+    {
+        var status = _p2pSession?.HandshakeStatus ?? ChatHandshakeStatus.Idle;
+        SessionStatusLabel.Text = status switch
+        {
+            ChatHandshakeStatus.InProgress => LocalizationUtils.GetStringByKey("chat.session_negotiating"),
+            ChatHandshakeStatus.Established => LocalizationUtils.GetStringByKey("chat.session_established"),
+            _ => string.Empty
+        };
+        RefreshQuantumPeerMark();
+    }
+
+    private async void OnPathModeClicked(object? sender, EventArgs e)
+    {
+        if (_p2pSession == null)
+            return;
+
+        var serverChoice = LocalizationUtils.GetStringByKey("chat.path_server_choice");
+        var meshChoice = LocalizationUtils.GetStringByKey("chat.path_mesh_choice");
+        var choice = await DisplayActionSheet(
+            LocalizationUtils.GetStringByKey("chat.path_title"),
+            LocalizationUtils.GetStringByKey("cancel"),
+            null,
+            serverChoice,
+            meshChoice).ConfigureAwait(true);
+
+        ChatDeliveryPath? path = choice switch
+        {
+            _ when choice == serverChoice => ChatDeliveryPath.Server,
+            _ when choice == meshChoice => ChatDeliveryPath.Mesh,
+            _ => null
+        };
+        if (path == null)
+            return;
+
+        try
+        {
+            await _p2pSession.SwitchDeliveryPathAsync(path.Value).ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Delivery path switch failed for chat {ChatId}", ChatId);
+            await DisplayAlert(LocalizationUtils.GetStringByKey("chat.path_title"), ex.Message, LocalizationUtils.GetStringByKey("ok")).ConfigureAwait(true);
+        }
+
+        RefreshDeliveryPathButton();
+        RefreshSessionStatusLabel();
+    }
+
     private async void OnBlockPeerClicked(object? sender, EventArgs e)
     {
         var user = _auth.CurrentUser;
@@ -1705,7 +2196,8 @@ public partial class ChatDetailPage : ContentPage
             return;
 
         var blocked = await BlacklistUi.ConfirmAndBlockAsync(
-            this, _blacklist, user.Id, chat.PeerNetworkIdShort, chat.PeerNickname).ConfigureAwait(true);
+            this, _blacklist, user.Id, chat.PeerNetworkIdShort, chat.PeerNickname,
+            chat.IsBot, _messengerServers).ConfigureAwait(true);
         if (blocked && Navigation.NavigationStack.Count > 1)
             await Navigation.PopAsync().ConfigureAwait(true);
     }
@@ -1716,24 +2208,26 @@ public partial class ChatDetailPage : ContentPage
             return;
 
         var confirm = await DisplayAlert(
-            Loc.T("chat.clear_title"),
-            Loc.T("chat.clear_body"),
-            Loc.T("delete"),
-            Loc.T("cancel")).ConfigureAwait(true);
+            LocalizationUtils.GetStringByKey("chat.clear_title"),
+            LocalizationUtils.GetStringByKey("chat.clear_body"),
+            LocalizationUtils.GetStringByKey("delete"),
+            LocalizationUtils.GetStringByKey("cancel")).ConfigureAwait(true);
         if (!confirm)
             return;
 
         ClearDeliveryIssue();
+        _stickToBottom = true;
+        SetScrollToLatestVisible(false);
         try
         {
             var ok = await _p2pSession.ClearMessagesAsync().ConfigureAwait(true);
             if (!ok)
-                await DisplayAlert(Loc.T("error"), Loc.T("chat.clear_fail"), Loc.T("ok")).ConfigureAwait(true);
+                await DisplayAlert(LocalizationUtils.GetStringByKey("error"), LocalizationUtils.GetStringByKey("chat.clear_fail"), LocalizationUtils.GetStringByKey("ok")).ConfigureAwait(true);
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Clear chat failed for chat {ChatId}", ChatId);
-            await DisplayAlert(Loc.T("error"), ex.Message, Loc.T("ok")).ConfigureAwait(true);
+            await DisplayAlert(LocalizationUtils.GetStringByKey("error"), ex.Message, LocalizationUtils.GetStringByKey("ok")).ConfigureAwait(true);
         }
         finally
         {
@@ -1763,3 +2257,4 @@ public partial class ChatDetailPage : ContentPage
         }
     }
 }
+

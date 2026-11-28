@@ -7,10 +7,10 @@ SetCompressor /SOLID lzma
   !define APP_NAME "TorgLink"
 !endif
 !ifndef APP_VERSION
-  !define APP_VERSION "0.1"
+  !define APP_VERSION "0.2.0"
 !endif
 !ifndef APP_PRODUCT_VERSION
-  !define APP_PRODUCT_VERSION "0.1.0.0"
+  !define APP_PRODUCT_VERSION "0.2.0.0"
 !endif
 !ifndef WINVER
   !define WINVER "10"

@@ -1,8 +1,8 @@
-using TorgLink.Maui.Localization;
 using Microsoft.Extensions.Logging;
 using ShortP2P.Auth.Data;
 using ShortP2P.Client.Services;
 using ShortP2P.Discovery;
+using TorgLink.Localization;
 
 namespace TorgLink.Maui;
 
@@ -26,7 +26,7 @@ public sealed class ContactDetailsPage : ContentPage
         _p2p = p2p;
         _logger = logger;
 
-        Title = Loc.T("contact.title");
+        Title = LocalizationUtils.GetStringByKey("contact.title");
         Shell.SetNavBarIsVisible(this, false);
         Shell.SetTabBarIsVisible(this, false);
         SetDynamicResource(BackgroundColorProperty, "PageBackground");
@@ -49,7 +49,7 @@ public sealed class ContactDetailsPage : ContentPage
 
         var title = new Label
         {
-            Text = Loc.T("contact.title"),
+            Text = LocalizationUtils.GetStringByKey("contact.title"),
             FontSize = 20,
             FontAttributes = FontAttributes.Bold,
             VerticalOptions = LayoutOptions.Center
@@ -98,12 +98,12 @@ public sealed class ContactDetailsPage : ContentPage
             Children = { _avatarFill, _avatarInitials, _avatarImage }
         };
 
-        var nickLabel = FieldLabel(Loc.T("contact.nickname"));
+        var nickLabel = FieldLabel(LocalizationUtils.GetStringByKey("contact.nickname"));
         var nickValue = FieldValue(_nickname);
-        var idLabel = FieldLabel(Loc.T("contact.network_id"));
+        var idLabel = FieldLabel(LocalizationUtils.GetStringByKey("contact.network_id"));
         var idValue = FieldValue(_networkIdShort);
-        var aboutLabel = FieldLabel(Loc.T("contact.about"));
-        _aboutValue = FieldValue(Loc.T("contact.not_set"));
+        var aboutLabel = FieldLabel(LocalizationUtils.GetStringByKey("contact.about"));
+        _aboutValue = FieldValue(LocalizationUtils.GetStringByKey("contact.not_set"));
         _aboutValue.TextColor = TorgLinkTheme.Muted;
 
         Content = new ScrollView
@@ -156,11 +156,11 @@ public sealed class ContactDetailsPage : ContentPage
 
             var nick = string.IsNullOrWhiteSpace(snap.Nickname) ? _nickname : snap.Nickname.Trim();
             byte[]? avatar = snap.Avatar;
-            if (avatar is { Length: > PeerProfileLimits.MaxAvatarBytes })
+            if (avatar is { Length: > PeerProfileLimits.MaxAvatarDisplayBytes })
             {
                 _logger?.LogWarning(
                     "Peer avatar for {NetworkId} is {Bytes} bytes (max {Max}); ignoring oversized blob",
-                    _networkIdShort, avatar.Length, PeerProfileLimits.MaxAvatarBytes);
+                    _networkIdShort, avatar.Length, PeerProfileLimits.MaxAvatarDisplayBytes);
                 avatar = null;
             }
 
@@ -203,3 +203,4 @@ public sealed class ContactDetailsPage : ContentPage
         return label;
     }
 }
+

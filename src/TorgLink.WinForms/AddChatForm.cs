@@ -5,6 +5,7 @@ using ShortP2P.Client.Data;
 using ShortP2P.Client.Qr;
 using ShortP2P.Client.Services;
 using ShortP2P.Client.Services.MessengerServers;
+using TorgLink.Localization;
 
 namespace TorgLink.WinForms;
 
@@ -36,6 +37,19 @@ public sealed partial class AddChatForm : AppForm
 
         _qrFile.Click += OnQrFromFile;
         _save.Click += async (_, _) => await OnSaveAsync().ConfigureAwait(true);
+        ApplyLocalizedUi();
+    }
+
+    protected override void ApplyLocalizedUi()
+    {
+        Text = LocalizationUtils.GetStringByKey("addchat.title");
+        _lblNick.Text = LocalizationUtils.GetStringByKey("addchat.nick");
+        _lblId.Text = LocalizationUtils.GetStringByKey("addchat.id");
+        _lblPub.Text = LocalizationUtils.GetStringByKey("addchat.pubkey");
+        _lblHost.Text = LocalizationUtils.GetStringByKey("addchat.host");
+        _qrFile.Text = LocalizationUtils.GetStringByKey("addchat.scan_img");
+        _save.Text = LocalizationUtils.GetStringByKey("save");
+        _cancel.Text = LocalizationUtils.GetStringByKey("cancel");
     }
 
     private void OnQrFromFile(object? sender, EventArgs e)

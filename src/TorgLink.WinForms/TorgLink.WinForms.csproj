@@ -36,16 +36,37 @@
     <PackageReference Include="NAudio" Version="2.2.1" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="..\Shared\BotHostClaims.cs" Link="BotHostClaims.cs" />
+    <ProjectReference Include="..\TorgLink.Localization\TorgLink.Localization.csproj" />
     <ProjectReference Include="..\..\ShortP2P\src\Fx48\ShortP2P.Client.Fx48.csproj" />
     <ProjectReference Include="..\..\ShortP2P\src\Fx48\ShortP2P.Auth.Fx48.csproj" />
     <ProjectReference Include="..\..\ShortP2P\src\Fx48\ShortP2P.Crypto.Fx48.csproj" />
+    <ProjectReference Include="..\..\ShortP2P\src\Fx48\ShortP2P.TrustSystem.Fx48.csproj" />
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="Resources\logo_32.png" />
     <EmbeddedResource Include="Resources\logo_64.png" />
     <EmbeddedResource Include="Resources\logo_256.png" />
+    <EmbeddedResource Include="Resources\flag_ru.png" />
+    <EmbeddedResource Include="Resources\flag_gb.png" />
+    <EmbeddedResource Include="Resources\flag_es.png" />
+    <EmbeddedResource Include="Resources\flag_de.png" />
+    <EmbeddedResource Include="Resources\flag_fr.png" />
+    <EmbeddedResource Include="Resources\flag_cn.png" />
     <Content Include="Resources\app.ico">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+  </ItemGroup>
+  <!-- Debug ships nlog.Debug.config as nlog.config; Release uses nlog.config (Error+). -->
+  <ItemGroup Condition="'$(Configuration)' == 'Debug'">
+    <None Include="nlog.Debug.config">
+      <Link>nlog.config</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+  <ItemGroup Condition="'$(Configuration)' != 'Debug'">
+    <None Include="nlog.config">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 </Project>

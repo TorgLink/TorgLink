@@ -1,5 +1,5 @@
-using TorgLink.Maui.Localization;
 using Microsoft.Maui.Controls.Shapes;
+using TorgLink.Localization;
 
 namespace TorgLink.Maui.Controls;
 
@@ -25,11 +25,12 @@ public sealed class SaveMediaFab : Border
             HorizontalOptions = LayoutOptions.Center,
             VerticalOptions = LayoutOptions.Center
         };
-        SemanticProperties.SetDescription(this, Loc.T("save"));
-        AutomationProperties.SetName(this, Loc.T("save"));
+        SemanticProperties.SetDescription(this, LocalizationUtils.GetStringByKey("save"));
+        AutomationProperties.SetName(this, LocalizationUtils.GetStringByKey("save"));
 
         var tap = new TapGestureRecognizer();
         tap.Tapped += async (_, _) => await onSave().ConfigureAwait(true);
         GestureRecognizers.Add(tap);
     }
 }
+

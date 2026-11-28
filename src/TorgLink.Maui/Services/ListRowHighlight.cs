@@ -14,6 +14,17 @@ internal static class ListRowHighlight
     private static readonly BindableProperty PressedProperty =
         BindableProperty.CreateAttached("Pressed", typeof(bool), typeof(ListRowHighlight), false);
 
+    private static readonly BindableProperty RestColorProperty =
+        BindableProperty.CreateAttached(
+            "RestColor",
+            typeof(Color),
+            typeof(ListRowHighlight),
+            null,
+            propertyChanged: OnRestColorChanged);
+
+    public static void SetRestColor(BindableObject view, Color? color) =>
+        view.SetValue(RestColorProperty, color);
+
     public static void Attach(View row)
     {
         if (row.GetValue(WiredProperty) is true)
@@ -49,8 +60,20 @@ internal static class ListRowHighlight
     private static void Refresh(View row)
     {
         var on = row.GetValue(HoverProperty) is true || row.GetValue(PressedProperty) is true;
-        row.BackgroundColor = on ? ResolveHover() : Colors.Transparent;
+        row.BackgroundColor = on ? ResolveHover() : ResolveRest(row);
     }
+
+    private static void OnRestColorChanged(BindableObject bindable, object oldValue, object newValue)
+    {
+        if (bindable is not View row)
+            return;
+        if (row.GetValue(HoverProperty) is true || row.GetValue(PressedProperty) is true)
+            return;
+        row.BackgroundColor = newValue as Color ?? Colors.Transparent;
+    }
+
+    private static Color ResolveRest(View row) =>
+        row.GetValue(RestColorProperty) as Color ?? Colors.Transparent;
 
     private static Color ResolveHover()
     {

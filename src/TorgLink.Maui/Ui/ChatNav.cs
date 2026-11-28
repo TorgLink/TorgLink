@@ -2,8 +2,8 @@ using ShortP2P.Auth;
 using ShortP2P.Client.Data;
 using ShortP2P.Client.Services;
 using ShortP2P.Discovery;
-using TorgLink.Maui.Localization;
 using TorgLink.Maui.Services;
+using TorgLink.Localization;
 
 namespace TorgLink.Maui;
 
@@ -48,7 +48,7 @@ internal static class ChatNav
             await blacklist.EnsureLoadedAsync(user.Id).ConfigureAwait(true);
             if (blacklist.IsBlocked(user.Id, peer.NetworkId.ToShortString()))
             {
-                await host.DisplayAlert(Loc.T("blacklist.title"), Loc.T("blacklist.blocked"), Loc.T("ok"))
+                await host.DisplayAlert(LocalizationUtils.GetStringByKey("blacklist.title"), LocalizationUtils.GetStringByKey("blacklist.blocked"), LocalizationUtils.GetStringByKey("ok"))
                     .ConfigureAwait(true);
                 return;
             }
@@ -64,10 +64,10 @@ internal static class ChatNav
                     await OpenChatAsync(host, result.Chat.Id).ConfigureAwait(true);
                 break;
             case LanChatStartKind.WaitingForPeer:
-                await host.DisplayAlert(Loc.T("network.title"), result.Message ?? "", Loc.T("ok")).ConfigureAwait(true);
+                await host.DisplayAlert(LocalizationUtils.GetStringByKey("network.title"), result.Message ?? "", LocalizationUtils.GetStringByKey("ok")).ConfigureAwait(true);
                 break;
             case LanChatStartKind.Failed:
-                await host.DisplayAlert(Loc.T("network.title"), result.Message ?? Loc.T("network.error"), Loc.T("ok"))
+                await host.DisplayAlert(LocalizationUtils.GetStringByKey("network.title"), result.Message ?? LocalizationUtils.GetStringByKey("network.error"), LocalizationUtils.GetStringByKey("ok"))
                     .ConfigureAwait(true);
                 break;
         }
@@ -76,16 +76,16 @@ internal static class ChatNav
     public static string Preview(ChatMessageEntity? m)
     {
         if (m == null)
-            return Loc.T("preview.none");
+            return LocalizationUtils.GetStringByKey("preview.none");
         if (m.PayloadKind == (int)ChatPayloadKind.Image)
-            return Loc.T("preview.photo");
+            return LocalizationUtils.GetStringByKey("preview.photo");
         if (m.MimeType?.StartsWith("audio/", StringComparison.OrdinalIgnoreCase) == true)
-            return Loc.T("preview.voice");
+            return LocalizationUtils.GetStringByKey("preview.voice");
         if (m.PayloadKind is (int)ChatPayloadKind.File or (int)ChatPayloadKind.TransferOffer)
             return string.IsNullOrWhiteSpace(m.TransferFileName)
-                ? (string.IsNullOrWhiteSpace(m.Text) ? Loc.T("preview.file") : m.Text)
+                ? (string.IsNullOrWhiteSpace(m.Text) ? LocalizationUtils.GetStringByKey("preview.file") : m.Text)
                 : m.TransferFileName;
-        return string.IsNullOrWhiteSpace(m.Text) ? Loc.T("preview.message") : m.Text.Replace('\n', ' ');
+        return string.IsNullOrWhiteSpace(m.Text) ? LocalizationUtils.GetStringByKey("preview.message") : m.Text.Replace('\n', ' ');
     }
 
     public static string TimeLabel(long utcTicks)
@@ -98,3 +98,4 @@ internal static class ChatNav
             : local.ToString("dd.MM");
     }
 }
+

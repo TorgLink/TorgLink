@@ -7,6 +7,7 @@ using ShortP2P.Auth.Data;
 using ShortP2P.Client;
 using ShortP2P.Client.ChatMedia;
 using ShortP2P.Client.Data;
+using ShortP2P.Client.ProfileBackup;
 using ShortP2P.Client.Services;
 using ShortP2P.Client.Services.MessengerServers;
 using ShortP2P.Client.Routing;
@@ -15,6 +16,8 @@ using ShortP2P.Discovery.Profile;
 using ShortP2P.MessengerServer.Contracts.Dtos;
 using ShortP2P.Transport;
 using SQLitePCL;
+using TorgLink.Localization;
+using TorgLink.WinForms.Localization;
 using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 
 namespace TorgLink.WinForms;
@@ -32,12 +35,17 @@ internal static class Program
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "TorgLink", "WinForms");
         Directory.CreateDirectory(appRoot);
+        var logsDir = Path.Combine(appRoot, "logs");
+        Directory.CreateDirectory(logsDir);
+        ConfigureNLog();
+        WinFormsLanguageBootstrap.Initialize(appRoot);
 
         var services = new ServiceCollection();
         services.AddLogging(b =>
         {
             b.ClearProviders();
-            b.SetMinimumLevel(LogLevel.Information);
+            // Filtering is in nlog.config / nlog.Debug.config (copied as nlog.config per build).
+            b.SetMinimumLevel(LogLevel.Trace);
             b.AddNLog();
         });
         services.AddSingleton(_ => new AppDatabase(Path.Combine(appRoot, "torglink.db")));
@@ -48,11 +56,18 @@ internal static class Program
         services.AddSingleton<ChatRepository>();
         services.AddSingleton<ChatSessionCache>();
         services.AddSingleton<IMessengerServerRepository, SqliteMessengerServerRepository>();
+        services.AddSingleton<IBotVersionRepository, SqliteBotVersionRepository>();
+        services.AddSingleton<ProfileBackupService>();
         services.AddSingleton<DeviceIdProvider>();
         services.AddSingleton<MessengerServerManager>();
         services.AddSingleton<MessengerServerSyncService>();
         services.AddSingleton<P2pRoutingSettingsStore>();
-        services.AddSingleton(_ => ChatMediaOptions.LoadOrDefault(Path.Combine(appRoot, "chat-media.json")));
+        services.AddSingleton(_ =>
+        {
+            var opts = ChatMediaOptions.LoadOrDefault(Path.Combine(appRoot, "chat-media.json"));
+            MediaEconomy.ApplyStandardCeilings(opts);
+            return opts;
+        });
         services.AddSingleton<IPeerProfileStore, SqlitePeerProfileStore>();
         services.AddSingleton<ILocalPeerProfileSource, AuthLocalPeerProfileSource>();
         services.AddSingleton(sp =>
@@ -86,6 +101,9 @@ internal static class Program
                     var remote = await sync.KeepAliveAndListRemoteClientsAsync(ct).ConfigureAwait(false);
                     scan.ApplyMessengerServerDirectory(ToDirectoryEntries(remote));
                     await SyncChatNicknamesFromPresenceAsync(auth, chats, remote, ct).ConfigureAwait(false);
+                    var bots = await sync.ProbeAndListRemoteBotsAsync(ct).ConfigureAwait(false);
+                    scan.ApplyBotDirectory(MessengerServerSyncService.ToBotDirectoryEntries(bots));
+                    await sync.SyncBotKeysFromCatalogAsync(bots, ct).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException)
                 {
@@ -106,7 +124,6 @@ internal static class Program
             return scan;
         });
         services.AddTransient<SettingsForm>();
-        services.AddTransient<ProfileForm>();
         services.AddTransient<LoginForm>();
         services.AddTransient<RegisterForm>();
         services.AddTransient<MainForm>();
@@ -114,15 +131,22 @@ internal static class Program
         services.AddTransient<MessengerServersForm>();
         // LanScanForm is constructed from MainForm with UI callbacks.
 
-        if (File.Exists(Path.Combine(AppContext.BaseDirectory, "nlog.config")))
-            LogManager.Setup().LoadConfigurationFromFile(Path.Combine(AppContext.BaseDirectory, "nlog.config"));
-
-        using var provider = services.BuildServiceProvider();
+        // Singletons include IAsyncDisposable-only services (LocalNetworkScanner,
+        // MessengerServerSyncService, MessengerServerManager). Sync ServiceProvider.Dispose()
+        // throws InvalidOperationException for those — always tear down via DisposeAsync.
+        var provider = services.BuildServiceProvider();
         var logger = provider.GetRequiredService<ILoggerFactory>().CreateLogger("TorgLink.WinForms");
-        logger.LogInformation("TorgLink WinForms (net472) started");
+        logger.LogDebug("TorgLink WinForms (net472) started; logs={LogsDir}", logsDir);
 
         try
         {
+            if (!LanguageService.HasChosen)
+            {
+                using var languageSelect = new LanguageSelectForm();
+                if (languageSelect.ShowDialog() != DialogResult.OK)
+                    return;
+            }
+
             while (true)
             {
                 using var login = provider.GetRequiredService<LoginForm>();
@@ -163,6 +187,7 @@ internal static class Program
         finally
         {
             LogManager.Shutdown();
+            provider.DisposeAsync().AsTask().GetAwaiter().GetResult();
         }
     }
 
@@ -208,5 +233,17 @@ internal static class Program
                 continue;
             await chats.TryUpdatePeerNicknameAsync(chat.Id, nick).ConfigureAwait(false);
         }
+    }
+
+    /// <summary>
+    /// Loads <c>nlog.config</c> from the app directory (Debug builds copy <c>nlog.Debug.config</c> as that name).
+    /// </summary>
+    private static void ConfigureNLog()
+    {
+        var configPath = Path.Combine(AppContext.BaseDirectory, "nlog.config");
+        if (!File.Exists(configPath))
+            return;
+
+        LogManager.Setup().LoadConfigurationFromFile(configPath);
     }
 }

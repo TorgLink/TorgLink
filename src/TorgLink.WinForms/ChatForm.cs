@@ -8,6 +8,7 @@ using ShortP2P.Client.Data;
 using ShortP2P.Client.Services;
 using ShortP2P.Client.Services.MessengerServers;
 using ShortP2P.Discovery;
+using TorgLink.Localization;
 
 namespace TorgLink.WinForms;
 
@@ -17,6 +18,8 @@ public sealed partial class ChatForm : AppForm
     private readonly ChatRepository _chats = null!;
     private readonly ChatSessionCache _sessions = null!;
     private readonly MessengerServerSyncService _sync = null!;
+    private readonly MessengerServerManager _messengerServers = null!;
+    private readonly PeerBlacklist _blacklist = null!;
     private readonly ChatMediaOptions _media = null!;
     private readonly P2pRoutingSettings _routing = null!;
     private ChatEntity _chat = null!;
@@ -65,6 +68,8 @@ public sealed partial class ChatForm : AppForm
         ChatRepository chats,
         ChatSessionCache sessions,
         MessengerServerSyncService sync,
+        MessengerServerManager messengerServers,
+        PeerBlacklist blacklist,
         ChatMediaOptions media,
         P2pRoutingSettings routing,
         ChatEntity chat,
@@ -75,6 +80,8 @@ public sealed partial class ChatForm : AppForm
         _chats = chats;
         _sessions = sessions;
         _sync = sync;
+        _messengerServers = messengerServers;
+        _blacklist = blacklist;
         _media = media;
         _routing = routing;
         _chat = chat;
@@ -90,11 +97,11 @@ public sealed partial class ChatForm : AppForm
         _messages.Resize += (_, _) => RelayoutMessageHeights();
         _messages.MouseClick += OnMessagesMouseClick;
 
-        _buttonTooltips.SetToolTip(_attachVoice,
-            "Голосовое (Ogg Opus): нажмите для начала записи, ещё раз — остановить и отправить. Битрейт зависит от режима экономии трафика.");
-        _buttonTooltips.SetToolTip(_attachImage, "Отправить изображение (сжатие по режиму экономии)");
-        _buttonTooltips.SetToolTip(_attachDocument, "Отправить документ");
-        _buttonTooltips.SetToolTip(_send, "Отправить сообщение");
+        ApplyLocalizedUi();
+        RefreshBotCommandsButton();
+        _deliveryPath.Click += (_, _) => ShowDeliveryPathMenu();
+        _botCommands.Click += async (_, _) => await ShowBotCommandsAsync().ConfigureAwait(true);
+        _blockPeer.Click += async (_, _) => await BlockPeerAsync().ConfigureAwait(true);
 
         _sidebar.DrawItem += OnSidebarDrawItem;
         _sidebar.SelectedIndexChanged += OnSidebarSelectedIndexChanged;
@@ -119,6 +126,7 @@ public sealed partial class ChatForm : AppForm
             if (_p2pSession != null)
             {
                 _p2pSession.MessagesChanged -= OnP2pMessagesChanged;
+                _p2pSession.DeliveryPathChanged -= OnDeliveryPathChanged;
                 _p2pSession = null;
             }
 
@@ -170,6 +178,7 @@ public sealed partial class ChatForm : AppForm
             _chat = chat;
             _unreadChatIds.Remove(chat.Id);
             Text = FormatTitle(chat);
+            RefreshBotCommandsButton();
             SelectSidebarChat(chat.Id);
 
             var user = _auth.CurrentUser;
@@ -272,6 +281,7 @@ public sealed partial class ChatForm : AppForm
         }
 
         await RefreshChatEntityAsync().ConfigureAwait(true);
+        RefreshDeliveryPathButton();
     }
 
     private void EnsureSession(UserEntity user)
@@ -285,6 +295,9 @@ public sealed partial class ChatForm : AppForm
             () => new ChatP2PSession(_chat, user, _chats, sync, uiSync, logger),
             s => s.ApplyChatRow(_chat));
         _p2pSession.MessagesChanged += OnP2pMessagesChanged;
+        _p2pSession.DeliveryPathChanged -= OnDeliveryPathChanged;
+        _p2pSession.DeliveryPathChanged += OnDeliveryPathChanged;
+        RefreshDeliveryPathButton();
     }
 
     private void DetachP2pMessagesChanged()
@@ -292,6 +305,175 @@ public sealed partial class ChatForm : AppForm
         if (_p2pSession == null)
             return;
         _p2pSession.MessagesChanged -= OnP2pMessagesChanged;
+        _p2pSession.DeliveryPathChanged -= OnDeliveryPathChanged;
+    }
+
+    protected override void ApplyLocalizedUi()
+    {
+        _send.Text = LocalizationUtils.GetStringByKey("chat.send");
+        _buttonTooltips.SetToolTip(_attachVoice, LocalizationUtils.GetStringByKey("chat.voice"));
+        _buttonTooltips.SetToolTip(_attachImage, LocalizationUtils.GetStringByKey("chat.image_picker"));
+        _buttonTooltips.SetToolTip(_attachDocument, LocalizationUtils.GetStringByKey("chat.doc_picker"));
+        _buttonTooltips.SetToolTip(_deliveryPath, LocalizationUtils.GetStringByKey("chat.path_hint"));
+        _buttonTooltips.SetToolTip(_send, LocalizationUtils.GetStringByKey("chat.send"));
+        _buttonTooltips.SetToolTip(_blockPeer, LocalizationUtils.GetStringByKey("blacklist.add_hint"));
+        _botCommands.Text = LocalizationUtils.GetStringByKey("chat.commands");
+        _buttonTooltips.SetToolTip(_botCommands, LocalizationUtils.GetStringByKey("chat.commands"));
+        RefreshBotCommandsButton();
+        RefreshDeliveryPathButton();
+        Text = FormatTitle(_chat);
+    }
+
+    private async Task BlockPeerAsync()
+    {
+        var user = _auth.CurrentUser;
+        if (user == null)
+            return;
+
+        var id = ChatRepository.CanonicalPeerNetworkId(_chat.PeerNetworkIdShort);
+        if (id.Length == 0)
+            return;
+
+        await _blacklist.EnsureLoadedAsync(user.Id).ConfigureAwait(true);
+        if (_blacklist.IsBlocked(user.Id, id))
+        {
+            Close();
+            return;
+        }
+
+        var label = string.IsNullOrWhiteSpace(_chat.PeerNickname) ? id : _chat.PeerNickname.Trim();
+        if (_chat.MlKemSessionVerified || (_p2pSession?.IsMlKemSession ?? false))
+            label += " ⚛️";
+        var bodyKey = _chat.IsBot ? "blacklist.add_body_bot" : "blacklist.add_body";
+        var confirm = MessageBox.Show(
+            this,
+            LocalizationUtils.GetStringByKeyWithFormat(bodyKey, label),
+            LocalizationUtils.GetStringByKey("blacklist.add_title"),
+            MessageBoxButtons.OKCancel,
+            MessageBoxIcon.Warning);
+        if (confirm != DialogResult.OK)
+            return;
+
+        await _blacklist.AddAsync(user.Id, id, label).ConfigureAwait(true);
+        if (_chat.IsBot)
+        {
+            try
+            {
+                await BotHostClaims.ClaimServersHostingBotAsync(_messengerServers, id).ConfigureAwait(true);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Bot host claim failed for {BotId}", id);
+            }
+        }
+
+        Close();
+    }
+
+    private void RefreshBotCommandsButton()
+    {
+        _botCommands.Visible = _chat.IsBot;
+    }
+
+    private async Task ShowBotCommandsAsync()
+    {
+        if (!_chat.IsBot)
+            return;
+
+        try
+        {
+            var commands = await _sync.FetchBotCommandsAsync(_chat.PeerNetworkIdShort).ConfigureAwait(true);
+            var body = commands.Count == 0
+                ? LocalizationUtils.GetStringByKey("chat.commands_empty")
+                : BotCommandText.FormatList(commands);
+            MessageBox.Show(
+                this,
+                body,
+                LocalizationUtils.GetStringByKey("chat.commands_title"),
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Bot commands failed for chat {ChatId}", _chat.Id);
+            MessageBox.Show(
+                this,
+                LocalizationUtils.GetStringByKey("chat.commands_fail"),
+                LocalizationUtils.GetStringByKey("chat.commands_title"),
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning);
+        }
+    }
+
+    private void RefreshDeliveryPathButton()
+    {
+        if (_p2pSession == null)
+        {
+            _deliveryPath.Text = LocalizationUtils.GetStringByKey("chat.path_auto");
+            return;
+        }
+
+        _deliveryPath.Text = _p2pSession.DeliveryPath switch
+        {
+            ChatDeliveryPath.Server => LocalizationUtils.GetStringByKey("chat.path_server"),
+            ChatDeliveryPath.Mesh => LocalizationUtils.GetStringByKey("chat.path_mesh"),
+            _ => LocalizationUtils.GetStringByKey("chat.path_auto")
+        };
+    }
+
+    private void OnDeliveryPathChanged(object? sender, EventArgs e)
+    {
+        if (IsHandleCreated)
+            BeginInvoke(RefreshDeliveryPathButton);
+    }
+
+    private void ShowDeliveryPathMenu()
+    {
+        if (_p2pSession == null)
+            return;
+
+        var menu = new ContextMenuStrip();
+        ChatDeliveryPath? chosen = null;
+        menu.Items.Add(LocalizationUtils.GetStringByKey("chat.path_server_choice"), null,
+            (_, _) => chosen = ChatDeliveryPath.Server);
+        menu.Items.Add(LocalizationUtils.GetStringByKey("chat.path_mesh_choice"), null,
+            (_, _) => chosen = ChatDeliveryPath.Mesh);
+        menu.Closed += (_, _) =>
+        {
+            // Dispose after Closed finishes — disposing inside Closed races ToolStripDropDown.CreateHandle.
+            var path = chosen;
+            void Finish()
+            {
+                menu.Dispose();
+                if (path != null)
+                    _ = ApplyDeliveryPathAsync(path.Value);
+            }
+
+            if (IsHandleCreated)
+                BeginInvoke(Finish);
+            else
+                Finish();
+        };
+        menu.Show(_deliveryPath, new Point(0, _deliveryPath.Height));
+    }
+
+    private async Task ApplyDeliveryPathAsync(ChatDeliveryPath path)
+    {
+        if (_p2pSession == null)
+            return;
+
+        _logger.LogInformation("Chat {Peer}: switch delivery path to {Path}", _chat.PeerNickname, path);
+        try
+        {
+            await _p2pSession.SwitchDeliveryPathAsync(path).ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Delivery path switch failed for chat {ChatId}", _chat.Id);
+            MessageBox.Show(this, ex.Message, "Путь доставки", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+
+        RefreshDeliveryPathButton();
     }
 
     private void OnChatListChanged(object? sender, EventArgs e)
@@ -359,11 +541,18 @@ public sealed partial class ChatForm : AppForm
         _p2pSession?.ApplyChatRow(fresh);
         if (IsHandleCreated && InvokeRequired)
         {
-            BeginInvoke(new Action(() => Text = FormatTitle(_chat)));
+            BeginInvoke(new Action(() =>
+            {
+                Text = FormatTitle(_chat);
+                RefreshBotCommandsButton();
+                RefreshDeliveryPathButton();
+            }));
             return;
         }
 
         Text = FormatTitle(_chat);
+        RefreshBotCommandsButton();
+        RefreshDeliveryPathButton();
     }
 
     private async Task RefreshSidebarAsync()
@@ -554,11 +743,22 @@ public sealed partial class ChatForm : AppForm
 
         EnsureSession(user);
 
+        if (_p2pSession!.IsMeshtasticPathActive && text.Length > ChatP2PSession.MaxMeshtasticMessageChars)
+        {
+            var warn = string.Format(
+                LocalizationUtils.GetStringByKey("chat.text_meshtastic_too_long"),
+                ChatP2PSession.MaxMeshtasticMessageChars);
+            MessageBox.Show(this, warn, LocalizationUtils.GetStringByKey("chat.send"),
+                MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            ShowSendError(warn);
+            return;
+        }
+
         _send.Enabled = false;
         try
         {
             // UI only enqueues Pending into DB; the session flush worker delivers from DB.
-            await _p2pSession!.SendTextAsync(text).ConfigureAwait(false);
+            await _p2pSession.SendTextAsync(text).ConfigureAwait(false);
             if (InvokeRequired)
                 BeginInvoke(new Action(() => _input.Clear()));
             else
@@ -602,7 +802,8 @@ public sealed partial class ChatForm : AppForm
             : null;
         var nameFont = boldFont ?? baseFont;
         var nameBounds = new Rectangle(e.Bounds.X + 6, e.Bounds.Y + 2, e.Bounds.Width - 10, nameFont.Height);
-        TextRenderer.DrawText(e.Graphics, row.Chat.PeerNickname, nameFont, nameBounds, e.ForeColor,
+        var sideName = row.Chat.MlKemSessionVerified ? row.Chat.PeerNickname + " ⚛️" : row.Chat.PeerNickname;
+        TextRenderer.DrawText(e.Graphics, sideName, nameFont, nameBounds, e.ForeColor,
             TextFormatFlags.Left | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
 
         if (!string.IsNullOrEmpty(row.Preview))

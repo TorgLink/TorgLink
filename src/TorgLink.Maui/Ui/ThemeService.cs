@@ -47,6 +47,7 @@ internal static class ThemeService
         Set(app, "PrimaryDark", p.AccentDark);
         Set(app, "PageBackground", p.PageBackground);
         Set(app, "Surface", p.Surface);
+        Set(app, "ChatSidebarBackground", p.IsDark ? Color.FromArgb("#2F4F4F") : p.Surface);
         Set(app, "FieldBackground", p.FieldBackground);
         Set(app, "TextPrimary", p.TextPrimary);
         Set(app, "MidnightBlue", p.TextPrimary);

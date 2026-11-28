@@ -1,28 +1,43 @@
 using Microsoft.Maui.Controls.Shapes;
 using Microsoft.Extensions.Logging;
-using TorgLink.Maui.Localization;
 using TorgLink.Maui.Services;
 using ShortP2P.Auth;
 using ShortP2P.Client.Bluetooth;
 using ShortP2P.Client.Data.Abstractions;
+using ShortP2P.Client.ProfileBackup;
 using ShortP2P.Client.Routing;
 using ShortP2P.Client.Services;
 using ShortP2P.Discovery;
+using ShortP2P.LoRa.Jurisdiction;
+using TorgLink.Localization;
+using TorgLink.LoRa;
 
 namespace TorgLink.Maui;
 
 public partial class SettingsPage : ContentPage
 {
+    private const string DefaultLoRaComPort = "COM1";
+    private const int DefaultLoRaBaudRate = 115200;
+
     private readonly AuthService _auth;
     private readonly IBluetoothTransportProvider _bluetoothTransport;
     private readonly ILogger<SettingsPage> _logger;
     private readonly UserP2pRuntime _p2p;
     private readonly P2pRoutingSettingsStore _store;
     private readonly DatabaseProviderSettings _databaseSettings;
+    private readonly ProfileBackupService _profileBackup;
+    private readonly MeshtasticTransportHost _lora;
     private bool _suppressToggle;
 
-    public SettingsPage(AuthService auth, UserP2pRuntime p2p, P2pRoutingSettingsStore store,
-        IBluetoothTransportProvider bluetoothTransport, DatabaseProviderSettings databaseSettings, ILogger<SettingsPage> logger)
+    public SettingsPage(
+        AuthService auth,
+        UserP2pRuntime p2p,
+        P2pRoutingSettingsStore store,
+        IBluetoothTransportProvider bluetoothTransport,
+        DatabaseProviderSettings databaseSettings,
+        ILogger<SettingsPage> logger,
+        ProfileBackupService profileBackup,
+        MeshtasticTransportHost lora)
     {
         InitializeComponent();
         _auth = auth;
@@ -31,6 +46,8 @@ public partial class SettingsPage : ContentPage
         _bluetoothTransport = bluetoothTransport;
         _databaseSettings = databaseSettings;
         _logger = logger;
+        _profileBackup = profileBackup;
+        _lora = lora;
         LanguageService.Changed += OnLanguageChanged;
         ProfileRow.GestureRecognizers.Add(new TapGestureRecognizer
         {
@@ -78,20 +95,122 @@ public partial class SettingsPage : ContentPage
         BluetoothSwitch.IsToggled = _p2p.Settings.EnableBluetoothTransport;
         LanSwitch.IsToggled = _p2p.Settings.EnableUdpTransport;
         RoutingSwitch.IsToggled = _p2p.Settings.AdvertisedPeerCapabilities.HasFlag(PresencePeerCapabilities.PeerSearch);
+        VisibleForSearchSwitch.IsToggled = _p2p.Settings.VisibleForSearch;
+        MlKemSwitch.IsToggled = _p2p.Settings.EnableMlKem;
         _suppressToggle = false;
-        BluetoothHint.Text = BluetoothSwitch.IsToggled ? Loc.T("on") : Loc.T("off");
-        LanHint.Text = LanSwitch.IsToggled ? Loc.T("on") : Loc.T("off");
-        RoutingHint.Text = RoutingSwitch.IsToggled ? Loc.T("on") : Loc.T("off");
+        BluetoothHint.Text = BluetoothSwitch.IsToggled ? LocalizationUtils.GetStringByKey("on") : LocalizationUtils.GetStringByKey("off");
+        LanHint.Text = LanSwitch.IsToggled ? LocalizationUtils.GetStringByKey("on") : LocalizationUtils.GetStringByKey("off");
+        RoutingHint.Text = RoutingSwitch.IsToggled ? LocalizationUtils.GetStringByKey("on") : LocalizationUtils.GetStringByKey("off");
+        VisibleForSearchHint.Text = VisibleForSearchSwitch.IsToggled
+            ? LocalizationUtils.GetStringByKey("on")
+            : LocalizationUtils.GetStringByKey("off");
+        MlKemHint.Text = MlKemSwitch.IsToggled
+            ? LocalizationUtils.GetStringByKey("on")
+            : LocalizationUtils.GetStringByKey("off");
         EconomyHint.Text = MediaEconomy.Hint(_p2p.Settings.TrafficQuality);
         StorageLabel.Text = FormatStorage();
 
         // Initialize database provider picker
         InitializeDatabaseProviderPicker();
+        await LoadLoRaSettingsAsync().ConfigureAwait(true);
 
         RebuildLanguageTiles();
         RebuildThemeChips();
         RebuildEconomyChips();
         await Task.CompletedTask.ConfigureAwait(true);
+    }
+
+    private async Task LoadLoRaSettingsAsync()
+    {
+        var s = await _lora.LoadSettingsAsync().ConfigureAwait(true);
+        _suppressToggle = true;
+        LoRaSwitch.IsToggled = s.Enabled;
+        var ports = SerialComPorts.List(s.ComPort).ToList();
+        LoRaComPortPicker.ItemsSource = ports;
+        var portIndex = ports.FindIndex(p => string.Equals(p, s.ComPort, StringComparison.OrdinalIgnoreCase));
+        LoRaComPortPicker.SelectedIndex = portIndex >= 0 ? portIndex : 0;
+        var codes = JurisdictionCatalog.Regions.Select(r => r.Code).ToList();
+        LoRaJurisdictionPicker.ItemsSource = codes;
+        var idx = codes.FindIndex(c => string.Equals(c, s.JurisdictionCode, StringComparison.OrdinalIgnoreCase));
+        LoRaJurisdictionPicker.SelectedIndex = idx >= 0 ? idx : 0;
+        LoRaTxPowerPicker.ItemsSource = LoRaTxPower.UiChoices.Select(d => $"{d} dBm").ToList();
+        SelectLoRaTxPower(s.TxPowerDbm);
+        _suppressToggle = false;
+        LoRaStatusLabel.Text = _lora.IsRunning
+            ? "LoRa transport: running"
+            : s.Enabled
+                ? "LoRa transport: not running (check COM / jurisdiction)"
+                : "LoRa transport: off";
+        UpdateLoRaMlKemWarning();
+    }
+
+    private void OnLoRaToggled(object? sender, ToggledEventArgs e)
+    {
+        // Applied on Save.
+        UpdateLoRaMlKemWarning();
+    }
+
+    private void UpdateLoRaMlKemWarning()
+    {
+        LoRaMlKemWarningLabel.Text = LocalizationUtils.GetStringByKey("settings.lora_mlkem_warning");
+        LoRaMlKemWarningLabel.IsVisible = LoRaSwitch.IsToggled;
+    }
+
+    private void OnLoRaJurisdictionChanged(object? sender, EventArgs e)
+    {
+        if (_suppressToggle)
+            return;
+        var code = LoRaJurisdictionPicker.SelectedItem as string ?? JurisdictionCatalog.UnsetCode;
+        var profile = JurisdictionCatalog.Find(code) ?? JurisdictionCatalog.Unset;
+        SelectLoRaTxPower(LoRaTxPower.DefaultForJurisdiction(profile));
+    }
+
+    private void SelectLoRaTxPower(int dbm)
+    {
+        var clamped = LoRaTxPower.ClampUi(dbm);
+        var choices = LoRaTxPower.UiChoices;
+        var index = choices.ToList().FindIndex(d => d == clamped);
+        if (LoRaTxPowerPicker.ItemsSource == null)
+            LoRaTxPowerPicker.ItemsSource = choices.Select(d => $"{d} dBm").ToList();
+        LoRaTxPowerPicker.SelectedIndex = index >= 0 ? index : choices.Count - 1;
+    }
+
+    private int ReadLoRaTxPowerDbm()
+    {
+        var index = LoRaTxPowerPicker.SelectedIndex;
+        var choices = LoRaTxPower.UiChoices;
+        if (index >= 0 && index < choices.Count)
+            return choices[index];
+
+        return LoRaTxPower.MaxDbm;
+    }
+
+    private async void OnLoRaSaveClicked(object? sender, EventArgs e)
+    {
+        var code = LoRaJurisdictionPicker.SelectedItem as string ?? JurisdictionCatalog.UnsetCode;
+        var settings = new LoRaTransportSettings
+        {
+            Enabled = LoRaSwitch.IsToggled,
+            ComPort = LoRaComPortPicker.SelectedItem as string ?? DefaultLoRaComPort,
+            BaudRate = DefaultLoRaBaudRate,
+            JurisdictionCode = code,
+            TxPowerDbm = ReadLoRaTxPowerDbm()
+        };
+        try
+        {
+            await _lora.SaveSettingsAsync(settings).ConfigureAwait(true);
+            var user = _auth.CurrentUser;
+            if (user != null)
+                await LoRaBootstrap.EnsureRunningAsync(_lora, _p2p, user, _logger).ConfigureAwait(true);
+            else if (!settings.Enabled)
+                await _lora.StopAsync().ConfigureAwait(true);
+            await LoadLoRaSettingsAsync().ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Apply LoRa settings failed");
+            LoRaStatusLabel.Text = ex.Message;
+        }
     }
 
     private void InitializeDatabaseProviderPicker()
@@ -108,25 +227,30 @@ public partial class SettingsPage : ContentPage
 
     private void ApplyLocalizedChrome()
     {
-        Title = Loc.T("settings.title");
+        Title = LocalizationUtils.GetStringByKey("settings.title");
         TitleLabel.Text = Title;
-        LanguageSectionLabel.Text = Loc.T("lang.section");
-        AppearanceLabel.Text = Loc.T("settings.appearance");
-        BluetoothLabel.Text = Loc.T("settings.bluetooth");
-        UdpLabel.Text = Loc.T("settings.udp");
-        LanLabel.Text = Loc.T("settings.lan");
-        RoutingLabel.Text = Loc.T("settings.routing");
-        DatabaseLabel.Text = Loc.T("settings.database");
-        DatabaseHint.Text = Loc.T("settings.database_hint");
-        EconomyLabel.Text = Loc.T("settings.economy");
-        StorageTitleLabel.Text = Loc.T("settings.storage");
-        ExportKeysButton.Text = Loc.T("settings.export_keys");
-        RoutingOpenButton.Text = Loc.T("settings.routing_open");
-        ConnectionTestButton.Text = Loc.T("settings.connection_test");
-        LogsButton.Text = Loc.T("settings.logs");
-        BlacklistButton.Text = Loc.T("blacklist.title");
-        AboutButton.Text = Loc.T("settings.about");
-        LogoutButton.Text = Loc.T("settings.logout");
+        LanguageSectionLabel.Text = LocalizationUtils.GetStringByKey("lang.section");
+        AppearanceLabel.Text = LocalizationUtils.GetStringByKey("settings.appearance");
+        BluetoothLabel.Text = LocalizationUtils.GetStringByKey("settings.bluetooth");
+        UdpLabel.Text = LocalizationUtils.GetStringByKey("settings.udp");
+        LanLabel.Text = LocalizationUtils.GetStringByKey("settings.lan");
+        RoutingLabel.Text = LocalizationUtils.GetStringByKey("settings.routing");
+        VisibleForSearchLabel.Text = LocalizationUtils.GetStringByKey("settings.visible_for_search");
+        MlKemLabel.Text = LocalizationUtils.GetStringByKey("settings.mlkem");
+        DatabaseLabel.Text = LocalizationUtils.GetStringByKey("settings.database");
+        DatabaseHint.Text = LocalizationUtils.GetStringByKey("settings.database_hint");
+        EconomyLabel.Text = LocalizationUtils.GetStringByKey("settings.economy");
+        StorageTitleLabel.Text = LocalizationUtils.GetStringByKey("settings.storage");
+        ExportKeysButton.Text = LocalizationUtils.GetStringByKey("settings.export_keys");
+        ExportProfileButton.Text = LocalizationUtils.GetStringByKey("settings.export_profile");
+        ShareProfileButton.Text = LocalizationUtils.GetStringByKey("settings.share_profile");
+        RoutingOpenButton.Text = LocalizationUtils.GetStringByKey("settings.routing_open");
+        ConnectionTestButton.Text = LocalizationUtils.GetStringByKey("settings.connection_test");
+        LogsButton.Text = LocalizationUtils.GetStringByKey("settings.logs");
+        BlacklistButton.Text = LocalizationUtils.GetStringByKey("blacklist.title");
+        AboutButton.Text = LocalizationUtils.GetStringByKey("settings.about");
+        LogoutButton.Text = LocalizationUtils.GetStringByKey("settings.logout");
+        UpdateLoRaMlKemWarning();
         var warn = LanguageService.TranslationWarning(LanguageService.Current);
         LanguageWarningLabel.Text = warn;
         LanguageWarningLabel.IsVisible = LanguageService.ShowTranslationWarning;
@@ -201,7 +325,7 @@ public partial class SettingsPage : ContentPage
                 return;
             var warn = LanguageService.TranslationWarning(captured);
             if (!string.IsNullOrEmpty(warn))
-                _ = DisplayAlert(LanguageService.NativeName(captured), warn, Loc.T("ok"));
+                _ = DisplayAlert(LanguageService.NativeName(captured), warn, LocalizationUtils.GetStringByKey("ok"));
             LanguageService.Set(captured);
         };
         tile.GestureRecognizers.Add(tap);
@@ -307,7 +431,7 @@ public partial class SettingsPage : ContentPage
                 foreach (var f in Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories))
                     bytes += new FileInfo(f).Length;
             var mb = bytes / (1024.0 * 1024.0);
-            return mb >= 1024 ? Loc.Tf("settings.storage_gb", mb / 1024) : Loc.Tf("settings.storage_mb", mb);
+            return mb >= 1024 ? LocalizationUtils.GetStringByKeyWithFormat("settings.storage_gb", mb / 1024) : LocalizationUtils.GetStringByKeyWithFormat("settings.storage_mb", mb);
         }
         catch
         {
@@ -328,10 +452,10 @@ public partial class SettingsPage : ContentPage
         MainThread.BeginInvokeOnMainThread(async () =>
         {
             var result = await DisplayAlert(
-                Loc.T("settings.database_change_title"),
-                Loc.T("settings.database_change_message"),
-                Loc.T("ok"),
-                Loc.T("cancel")
+                LocalizationUtils.GetStringByKey("settings.database_change_title"),
+                LocalizationUtils.GetStringByKey("settings.database_change_message"),
+                LocalizationUtils.GetStringByKey("ok"),
+                LocalizationUtils.GetStringByKey("cancel")
             ).ConfigureAwait(true);
 
             if (result)
@@ -352,21 +476,21 @@ public partial class SettingsPage : ContentPage
 
     private async void OnBluetoothToggled(object? sender, ToggledEventArgs e)
     {
-        BluetoothHint.Text = e.Value ? Loc.T("on") : Loc.T("off");
+        BluetoothHint.Text = e.Value ? LocalizationUtils.GetStringByKey("on") : LocalizationUtils.GetStringByKey("off");
         if (!_suppressToggle)
             await SaveAsync(s => s.EnableBluetoothTransport = e.Value).ConfigureAwait(true);
     }
 
     private async void OnLanToggled(object? sender, ToggledEventArgs e)
     {
-        LanHint.Text = e.Value ? Loc.T("on") : Loc.T("off");
+        LanHint.Text = e.Value ? LocalizationUtils.GetStringByKey("on") : LocalizationUtils.GetStringByKey("off");
         if (!_suppressToggle)
             await SaveAsync(s => s.EnableUdpTransport = e.Value).ConfigureAwait(true);
     }
 
     private async void OnRoutingToggled(object? sender, ToggledEventArgs e)
     {
-        RoutingHint.Text = e.Value ? Loc.T("on") : Loc.T("off");
+        RoutingHint.Text = e.Value ? LocalizationUtils.GetStringByKey("on") : LocalizationUtils.GetStringByKey("off");
         if (_suppressToggle)
             return;
         await SaveAsync(s =>
@@ -377,6 +501,26 @@ public partial class SettingsPage : ContentPage
                 cap |= PresencePeerCapabilities.PeerSearch;
             s.AdvertisedPeerCapabilities = cap;
         }).ConfigureAwait(true);
+    }
+
+    private async void OnVisibleForSearchToggled(object? sender, ToggledEventArgs e)
+    {
+        VisibleForSearchHint.Text = e.Value
+            ? LocalizationUtils.GetStringByKey("on")
+            : LocalizationUtils.GetStringByKey("off");
+        if (_suppressToggle)
+            return;
+        await SaveAsync(s => s.VisibleForSearch = e.Value).ConfigureAwait(true);
+    }
+
+    private async void OnMlKemToggled(object? sender, ToggledEventArgs e)
+    {
+        MlKemHint.Text = e.Value
+            ? LocalizationUtils.GetStringByKey("on")
+            : LocalizationUtils.GetStringByKey("off");
+        if (_suppressToggle)
+            return;
+        await SaveAsync(s => s.EnableMlKem = e.Value).ConfigureAwait(true);
     }
 
     private async Task<bool> SaveAsync(Action<P2pRoutingSettings> mutate)
@@ -390,12 +534,19 @@ public partial class SettingsPage : ContentPage
             AppLog.SettingChanged("EnableUdpTransport", s.EnableUdpTransport);
             AppLog.SettingChanged("AdvertisedPeerCapabilities", s.AdvertisedPeerCapabilities);
             AppLog.SettingChanged("TrafficQuality", s.TrafficQuality);
+            AppLog.SettingChanged("VisibleForSearch", s.VisibleForSearch);
+            AppLog.SettingChanged("EnableMlKem", s.EnableMlKem);
             _p2p.Settings.EnableUdpTransport = s.EnableUdpTransport;
             _p2p.Settings.EnableBluetoothTransport = s.EnableBluetoothTransport;
             _p2p.Settings.AdvertisedPeerCapabilities = s.AdvertisedPeerCapabilities | PresencePeerCapabilities.Chat;
+            _p2p.Settings.VisibleForSearch = s.VisibleForSearch;
+            _p2p.Settings.EnableMlKem = s.EnableMlKem;
+            ShortP2P.Crypto.MlKemCrypto.SetFeatureEnabled(s.EnableMlKem);
+            _p2p.NotifyMlKemSettingChanged();
             MediaEconomy.Apply(_p2p, s.TrafficQuality);
             _bluetoothTransport.ApplySettings(s);
             Header.Bind(_auth.CurrentUser, _p2p);
+            _ = _p2p.PushSearchVisibilityAsync();
             return true;
         }
         catch (Exception ex)
@@ -407,6 +558,12 @@ public partial class SettingsPage : ContentPage
 
     private async void OnExportKeysClicked(object? sender, EventArgs e) =>
         await ProfileShare.CopyKeysAsync(this, _auth).ConfigureAwait(true);
+
+    private async void OnExportProfileClicked(object? sender, EventArgs e) =>
+        await ProfileFileShare.ExportProfileAsync(this, _auth, _profileBackup, _logger).ConfigureAwait(true);
+
+    private async void OnShareProfileClicked(object? sender, EventArgs e) =>
+        await ProfileFileShare.ShareProfileAsync(this, _auth, _profileBackup, _logger).ConfigureAwait(true);
 
     private async void OnOpenRoutingClicked(object? sender, EventArgs e) =>
         await Navigation.PushAsync(MauiProgram.Services.GetRequiredService<RoutingSettingsPage>()).ConfigureAwait(true);
@@ -421,21 +578,63 @@ public partial class SettingsPage : ContentPage
         await Navigation.PushAsync(MauiProgram.Services.GetRequiredService<LogsPage>()).ConfigureAwait(true);
 
     private async void OnAboutClicked(object? sender, EventArgs e) =>
-        await DisplayAlert("TorgLink", Loc.T("settings.about_body"), Loc.T("ok")).ConfigureAwait(true);
+        await DisplayAlert("TorgLink", LocalizationUtils.GetStringByKey("settings.about_body"), LocalizationUtils.GetStringByKey("ok")).ConfigureAwait(true);
 
     private async void OnLogoutClicked(object? sender, EventArgs e)
     {
+        if (!LogoutButton.IsEnabled)
+            return;
+        LogoutButton.IsEnabled = false;
+
         try
         {
-            await _p2p.StopAsync().ConfigureAwait(true);
+            await _auth.LogoutAsync().ConfigureAwait(true);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Stop P2P on logout");
+            _logger.LogWarning(ex, "Logout failed");
         }
 
         AppLog.Ui.LogInformation("Logout");
-        await _auth.LogoutAsync().ConfigureAwait(true);
-        Application.Current!.MainPage = new NavigationPage(MauiProgram.Services.GetRequiredService<LoginPage>());
+        ShowLogin();
+
+        var p2p = _p2p;
+        var lora = _lora;
+        var logger = _logger;
+        // Stop after the login page is up. Awaiting this on the click freezes the UI
+        // for the messenger long-poll (and can deadlock WinRT stops on the UI thread).
+        P2pBootstrap.TrackShutdown(Task.Run(async () =>
+        {
+            try
+            {
+                await p2p.StopAsync().ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Stop P2P on logout");
+            }
+
+            try
+            {
+                await lora.StopAsync().ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Stop LoRa on logout");
+            }
+        }));
+    }
+
+    private static void ShowLogin()
+    {
+        var login = new NavigationPage(MauiProgram.Services.GetRequiredService<LoginPage>());
+        var app = Application.Current;
+        if (app == null)
+            return;
+        // MainPage alone does not replace a Shell window that is already open.
+        if (app.Windows.Count > 0)
+            app.Windows[0].Page = login;
+        app.MainPage = login;
     }
 }
+

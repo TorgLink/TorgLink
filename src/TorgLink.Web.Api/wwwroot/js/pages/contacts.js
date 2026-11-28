@@ -30,10 +30,12 @@ export function ContactsPage() {
           {
             class: "item",
             onclick: async () => {
+              if (!c.networkId) return;
               if (c.chatId) {
                 nav(`/app/chats/${c.chatId}`);
                 return;
               }
+              if (!c.networkId) return;
               try {
                 const r = await post("/api/chats/open-peer", { networkId: c.networkId });
                 nav(`/app/chats/${r.id}`);
@@ -47,7 +49,7 @@ export function ContactsPage() {
             "div",
             { class: "meta" },
             el("div", { class: "title" }, c.name),
-            el("div", { class: "sub" }, c.detail)
+            el("div", { class: c.isBot ? "sub wrap" : "sub" }, c.detail)
           ),
           el("span", { class: "dot " + (c.online ? "on" : "off") })
         )
@@ -73,6 +75,8 @@ export function ContactsPage() {
     try {
       await post("/api/contacts/scan");
       await load();
+    } catch (e) {
+      window.alert(e instanceof Error ? e.message : t("network.error"));
     } finally {
       busy = false;
       scanBtn.disabled = false;

@@ -13,6 +13,7 @@ partial class LoginForm
     private FlowLayoutPanel _buttons;
     private Button _login;
     private Button _register;
+    private Button _import;
     private Button _exit;
 
     protected override void Dispose(bool disposing)
@@ -32,6 +33,7 @@ partial class LoginForm
         _buttons = new FlowLayoutPanel();
         _login = new Button();
         _register = new Button();
+        _import = new Button();
         _exit = new Button();
         _layout.SuspendLayout();
         _buttons.SuspendLayout();
@@ -73,19 +75,20 @@ partial class LoginForm
         _login.Text = "Войти";
         _register.Name = "_register";
         _register.Text = "Регистрация";
-        _exit.DialogResult = DialogResult.Cancel;
+        _import.Name = "_import";
+        _import.Text = "Импорт профиля…";
         _exit.Name = "_exit";
-        _exit.Text = "Выход";
+        _exit.Text = "Разлогиниться";
 
         _buttons.AutoSize = true;
         _buttons.Name = "_buttons";
         _buttons.Controls.Add(_login);
         _buttons.Controls.Add(_register);
+        _buttons.Controls.Add(_import);
         _buttons.Controls.Add(_exit);
         _layout.Controls.Add(_buttons);
 
         AcceptButton = _login;
-        CancelButton = _exit;
         AutoSize = true;
         AutoSizeMode = AutoSizeMode.GrowAndShrink;
         Controls.Add(_layout);

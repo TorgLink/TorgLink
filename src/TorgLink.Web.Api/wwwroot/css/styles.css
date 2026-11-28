@@ -95,6 +95,7 @@ input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); }
 .item .meta { flex: 1; min-width: 0; }
 .item .title { font-weight: 600; display: flex; justify-content: space-between; gap: 8px; }
 .item .sub { color: var(--muted); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.item .sub.wrap { white-space: normal; overflow: visible; text-overflow: clip; }
 .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 .dot.on { background: var(--online); }
 .dot.off { background: var(--offline); }

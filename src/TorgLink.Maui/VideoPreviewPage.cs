@@ -1,6 +1,6 @@
 using TorgLink.Maui.Controls;
-using TorgLink.Maui.Localization;
 using TorgLink.Maui.Services;
+using TorgLink.Localization;
 
 namespace TorgLink.Maui;
 
@@ -19,11 +19,11 @@ public sealed class VideoPreviewPage : ContentPage
         _filePath = filePath;
         _displayName = string.IsNullOrWhiteSpace(displayName) ? Path.GetFileName(filePath) : displayName;
         _receivedAt = receivedAt;
-        Title = Loc.T("chat.video");
+        Title = LocalizationUtils.GetStringByKey("chat.video");
         BackgroundColor = Colors.Black;
         ToolbarItems.Add(new ToolbarItem
         {
-            Text = Loc.T("close"),
+            Text = LocalizationUtils.GetStringByKey("close"),
             Command = new Command(async () => await CloseAsync())
         });
 
@@ -83,13 +83,13 @@ public sealed class VideoPreviewPage : ContentPage
         {
             await Launcher.Default.OpenAsync(new OpenFileRequest
             {
-                Title = Loc.T("chat.video"),
+                Title = LocalizationUtils.GetStringByKey("chat.video"),
                 File = new ReadOnlyFile(_filePath)
             }).ConfigureAwait(true);
         }
         catch (Exception ex)
         {
-            await DisplayAlert(Loc.T("chat.video"), ex.Message, Loc.T("ok")).ConfigureAwait(true);
+            await DisplayAlert(LocalizationUtils.GetStringByKey("chat.video"), ex.Message, LocalizationUtils.GetStringByKey("ok")).ConfigureAwait(true);
         }
     }
 
@@ -101,7 +101,7 @@ public sealed class VideoPreviewPage : ContentPage
         }
         catch (Exception ex)
         {
-            await DisplayAlert(Loc.T("save"), ex.Message, Loc.T("ok")).ConfigureAwait(true);
+            await DisplayAlert(LocalizationUtils.GetStringByKey("save"), ex.Message, LocalizationUtils.GetStringByKey("ok")).ConfigureAwait(true);
         }
     }
 
@@ -113,3 +113,4 @@ public sealed class VideoPreviewPage : ContentPage
             await Navigation.PopAsync().ConfigureAwait(true);
     }
 }
+

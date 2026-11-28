@@ -1,5 +1,5 @@
-using TorgLink.Maui.Localization;
 using ShortP2P.Client.Qr;
+using TorgLink.Localization;
 
 namespace TorgLink.Maui;
 
@@ -57,10 +57,10 @@ public sealed class MessengerServerQrPage : ContentPage
 
     private void ApplyLocalizedUi()
     {
-        Title = Loc.T("servers.share_title");
-        _captionLabel.Text = Loc.Tf("servers.qr_caption", _caption);
-        _shareButton.Text = Loc.T("share");
-        _closeButton.Text = Loc.T("close");
+        Title = LocalizationUtils.GetStringByKey("servers.share_title");
+        _captionLabel.Text = LocalizationUtils.GetStringByKeyWithFormat("servers.qr_caption", _caption);
+        _shareButton.Text = LocalizationUtils.GetStringByKey("share");
+        _closeButton.Text = LocalizationUtils.GetStringByKey("close");
     }
 
     private async void OnShareClicked(object? sender, EventArgs e)
@@ -72,14 +72,15 @@ public sealed class MessengerServerQrPage : ContentPage
             await File.WriteAllBytesAsync(path, _qrPng).ConfigureAwait(true);
             await Share.Default.RequestAsync(new ShareFileRequest
             {
-                Title = Loc.T("servers.share_title"),
+                Title = LocalizationUtils.GetStringByKey("servers.share_title"),
                 File = new ShareFile(path)
             }).ConfigureAwait(true);
         }
         catch (Exception ex)
         {
-            await DisplayAlert(Loc.T("qr.title"), Loc.Tf("qr.share_fail", ex.Message), Loc.T("ok"))
+            await DisplayAlert(LocalizationUtils.GetStringByKey("qr.title"), LocalizationUtils.GetStringByKeyWithFormat("qr.share_fail", ex.Message), LocalizationUtils.GetStringByKey("ok"))
                 .ConfigureAwait(true);
         }
     }
 }
+

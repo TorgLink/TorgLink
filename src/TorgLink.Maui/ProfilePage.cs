@@ -1,7 +1,8 @@
 using Microsoft.Extensions.Logging;
 using ShortP2P.Auth;
 using ShortP2P.Auth.Data;
-using TorgLink.Maui.Localization;
+using ShortP2P.Client.Services;
+using TorgLink.Localization;
 
 namespace TorgLink.Maui;
 
@@ -9,6 +10,7 @@ namespace TorgLink.Maui;
 public sealed class ProfilePage : ContentPage
 {
     private readonly AuthService _auth;
+    private readonly UserP2pRuntime _p2p;
     private readonly ILogger<ProfilePage> _logger;
     private readonly Editor _aboutMe;
     private readonly Label _aboutCounter;
@@ -18,11 +20,12 @@ public sealed class ProfilePage : ContentPage
     private readonly Label _status;
     private byte[]? _avatarBytes;
 
-    public ProfilePage(AuthService auth, ILogger<ProfilePage> logger)
+    public ProfilePage(AuthService auth, UserP2pRuntime p2p, ILogger<ProfilePage> logger)
     {
         _auth = auth;
+        _p2p = p2p;
         _logger = logger;
-        Title = Loc.T("profile.title");
+        Title = LocalizationUtils.GetStringByKey("profile.title");
         Shell.SetNavBarIsVisible(this, false);
         Shell.SetTabBarIsVisible(this, false);
         SetDynamicResource(BackgroundColorProperty, "PageBackground");
@@ -62,7 +65,7 @@ public sealed class ProfilePage : ContentPage
         {
             AutoSize = EditorAutoSizeOption.TextChanges,
             HeightRequest = 120,
-            Placeholder = Loc.Tf("profile.about_ph", PeerProfileLimits.MaxAboutMeChars)
+            Placeholder = LocalizationUtils.GetStringByKeyWithFormat("profile.about_ph", PeerProfileLimits.MaxAboutMeChars)
         };
         _aboutMe.SetDynamicResource(Editor.TextColorProperty, "MidnightBlue");
         _aboutCounter = new Label { FontSize = 12 };
@@ -70,9 +73,9 @@ public sealed class ProfilePage : ContentPage
         _status = new Label { FontSize = 12 };
         _status.SetDynamicResource(Label.TextColorProperty, "MutedText");
 
-        var pick = new Button { Text = Loc.T("profile.choose_avatar") };
-        var clear = new Button { Text = Loc.T("profile.clear_avatar") };
-        var save = new Button { Text = Loc.T("profile.save") };
+        var pick = new Button { Text = LocalizationUtils.GetStringByKey("profile.choose_avatar") };
+        var clear = new Button { Text = LocalizationUtils.GetStringByKey("profile.clear_avatar") };
+        var save = new Button { Text = LocalizationUtils.GetStringByKey("profile.save") };
         pick.Clicked += async (_, _) => await OnPickAvatarAsync().ConfigureAwait(true);
         clear.Clicked += (_, _) =>
         {
@@ -99,7 +102,7 @@ public sealed class ProfilePage : ContentPage
         };
         var title = new Label
         {
-            Text = Loc.T("profile.title"),
+            Text = LocalizationUtils.GetStringByKey("profile.title"),
             FontSize = 20,
             FontAttributes = FontAttributes.Bold,
             VerticalOptions = LayoutOptions.Center
@@ -115,7 +118,7 @@ public sealed class ProfilePage : ContentPage
 
         var hint = new Label
         {
-            Text = Loc.Tf("profile.avatar_hint", PeerProfileLimits.MaxAvatarBytes / 1024, AvatarImageProcessor.Dimension),
+            Text = LocalizationUtils.GetStringByKeyWithFormat("profile.avatar_hint", PeerProfileLimits.MaxAvatarBytes / 1024, AvatarImageProcessor.Dimension),
             FontSize = 12,
             LineBreakMode = LineBreakMode.WordWrap
         };
@@ -154,7 +157,7 @@ public sealed class ProfilePage : ContentPage
     protected override void OnAppearing()
     {
         base.OnAppearing();
-        Title = Loc.T("profile.title");
+        Title = LocalizationUtils.GetStringByKey("profile.title");
         LoadCurrentProfileBestEffort();
     }
 
@@ -200,7 +203,7 @@ public sealed class ProfilePage : ContentPage
         {
             var result = await FilePicker.Default.PickAsync(new PickOptions
             {
-                PickerTitle = Loc.T("profile.choose_avatar"),
+                PickerTitle = LocalizationUtils.GetStringByKey("profile.choose_avatar"),
                 FileTypes = FilePickerFileType.Images
             }).ConfigureAwait(true);
             if (result == null)
@@ -213,7 +216,7 @@ public sealed class ProfilePage : ContentPage
             var prepared = AvatarImageProcessor.PrepareCropped(raw);
             if (prepared.Status == AvatarImageProcessor.PrepareStatus.Failed)
             {
-                _status.Text = prepared.Error ?? Loc.T("profile.avatar_failed");
+                _status.Text = prepared.Error ?? LocalizationUtils.GetStringByKey("profile.avatar_failed");
                 return;
             }
 
@@ -223,20 +226,20 @@ public sealed class ProfilePage : ContentPage
                 var sizeKb = Math.Max(1, (prepared.SizeAfterCrop + 1023) / 1024);
                 var limitKb = PeerProfileLimits.MaxAvatarBytes / 1024;
                 var compress = await DisplayAlert(
-                    Loc.T("profile.compress_title"),
-                    Loc.Tf("profile.compress_body", sizeKb, limitKb),
-                    Loc.T("profile.compress_yes"),
-                    Loc.T("cancel")).ConfigureAwait(true);
+                    LocalizationUtils.GetStringByKey("profile.compress_title"),
+                    LocalizationUtils.GetStringByKeyWithFormat("profile.compress_body", sizeKb, limitKb),
+                    LocalizationUtils.GetStringByKey("profile.compress_yes"),
+                    LocalizationUtils.GetStringByKey("cancel")).ConfigureAwait(true);
                 if (!compress)
                 {
-                    _status.Text = Loc.Tf("profile.avatar_too_large", limitKb);
+                    _status.Text = LocalizationUtils.GetStringByKeyWithFormat("profile.avatar_too_large", limitKb);
                     return;
                 }
 
                 if (!AvatarImageProcessor.TryCompressToLimit(prepared.Bytes!, PeerProfileLimits.MaxAvatarBytes,
                         out bytes, out var err))
                 {
-                    _status.Text = err ?? Loc.Tf("profile.avatar_too_large", limitKb);
+                    _status.Text = err ?? LocalizationUtils.GetStringByKeyWithFormat("profile.avatar_too_large", limitKb);
                     return;
                 }
             }
@@ -248,7 +251,7 @@ public sealed class ProfilePage : ContentPage
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to pick avatar (best-effort)");
-            _status.Text = Loc.T("profile.avatar_failed");
+            _status.Text = LocalizationUtils.GetStringByKey("profile.avatar_failed");
         }
     }
 
@@ -263,17 +266,19 @@ public sealed class ProfilePage : ContentPage
             var (ok, error) = await _auth.UpdateProfileAsync(text, _avatarBytes).ConfigureAwait(true);
             if (!ok)
             {
-                _status.Text = error ?? Loc.T("profile.save_failed");
+                _status.Text = error ?? LocalizationUtils.GetStringByKey("profile.save_failed");
                 return;
             }
 
-            _status.Text = Loc.T("profile.saved");
+            _ = _p2p.BroadcastLocalUserInfoToContactsAsync();
+            _status.Text = LocalizationUtils.GetStringByKey("profile.saved");
             await Navigation.PopAsync().ConfigureAwait(true);
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to save own profile");
-            _status.Text = Loc.T("profile.save_failed");
+            _status.Text = LocalizationUtils.GetStringByKey("profile.save_failed");
         }
     }
 }
+

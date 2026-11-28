@@ -1,13 +1,16 @@
 using System.Collections.ObjectModel;
 using Microsoft.Extensions.Logging;
-using TorgLink.Maui.Localization;
 using TorgLink.Maui.Services;
 using ShortP2P.Auth;
 using ShortP2P.Auth.Data;
 using ShortP2P.Client.Data;
 using ShortP2P.Client.Services;
+using ShortP2P.Client.Services.MessengerServers;
 using ShortP2P.Discovery;
 using ShortP2P.Transport.Abstractions;
+using TorgLink.Localization;
+using TorgLink.LoRa;
+using LoRaTransportKind = ShortP2P.LoRa.TransportKind;
 
 namespace TorgLink.Maui;
 
@@ -20,6 +23,8 @@ public sealed class ContactRow
     public required string Initials { get; init; }
     public required Color AvatarColor { get; init; }
     public bool IsOnline { get; init; }
+    public bool IsBot { get; init; }
+    public string BotMark { get; init; } = "";
 }
 
 public partial class ContactsPage : ContentPage
@@ -29,16 +34,19 @@ public partial class ContactsPage : ContentPage
     private readonly ChatRepository _chats;
     private readonly ILogger<ContactsPage> _logger;
     private readonly UserP2pRuntime _p2p;
+    private readonly MeshtasticTransportHost _lora;
     private readonly ObservableCollection<ContactRow> _rows = [];
     private bool _scanning;
     private string _search = "";
 
-    public ContactsPage(AuthService auth, ChatRepository chats, UserP2pRuntime p2p, ILogger<ContactsPage> logger)
+    public ContactsPage(AuthService auth, ChatRepository chats, UserP2pRuntime p2p,
+        MeshtasticTransportHost lora, ILogger<ContactsPage> logger)
     {
         InitializeComponent();
         _auth = auth;
         _chats = chats;
         _p2p = p2p;
+        _lora = lora;
         _logger = logger;
         ContactsCollection.ItemsSource = _rows;
     }
@@ -46,10 +54,10 @@ public partial class ContactsPage : ContentPage
     protected override async void OnAppearing()
     {
         base.OnAppearing();
-        Title = Loc.T("tab.contacts");
-        SearchEntry.Placeholder = Loc.T("contacts.search");
-        ScanButton.Text = Loc.T("contacts.scan");
-        EmptyContactsLabel.Text = Loc.T("contacts.empty");
+        Title = LocalizationUtils.GetStringByKey("tab.contacts");
+        SearchEntry.Placeholder = LocalizationUtils.GetStringByKey("contacts.search");
+        ScanButton.Text = LocalizationUtils.GetStringByKey("contacts.scan");
+        EmptyContactsLabel.Text = LocalizationUtils.GetStringByKey("contacts.empty");
         var u = _auth.CurrentUser;
         if (u != null)
             _ = EnsureConnectivityAsync(u);
@@ -62,7 +70,7 @@ public partial class ContactsPage : ContentPage
     {
         try
         {
-            await _p2p.EnsureStartedAsync(u).ConfigureAwait(false);
+            await P2pBootstrap.EnsureStartedAsync(_p2p, u, _logger).ConfigureAwait(false);
             await MessengerServersBootstrap.EnsureRunningAsync(_p2p, _logger).ConfigureAwait(false);
         }
         catch (Exception ex)
@@ -85,18 +93,29 @@ public partial class ContactsPage : ContentPage
         _scanning = true;
         ScanButton.IsEnabled = false;
         var sec = (int)Math.Round(LocalNetworkScanner.DefaultScanListenDuration.TotalSeconds);
-        ScanStatusLabel.Text = Loc.Tf("contacts.scanning_detail", sec);
+        ScanStatusLabel.Text = LocalizationUtils.GetStringByKeyWithFormat("contacts.scanning_detail", sec);
         ScanSpinner.IsRunning = true;
         ScanStatusRow.IsVisible = true;
         try
         {
-            await _p2p.LocalScan.ScanAsync(LocalNetworkScanner.DefaultScanListenDuration).ConfigureAwait(true);
+            await Task.WhenAll(
+                _p2p.LocalScan.ScanAsync(LocalNetworkScanner.DefaultScanListenDuration),
+                _lora.ScanAsync()).ConfigureAwait(true);
+            if (_p2p.MessengerServers != null)
+            {
+                var bots = await _p2p.MessengerServers.ProbeAndListRemoteBotsAsync(CancellationToken.None)
+                    .ConfigureAwait(true);
+                _p2p.LocalScan.ApplyBotDirectory(MessengerServerSyncService.ToBotDirectoryEntries(bots));
+                await _p2p.MessengerServers.SyncBotKeysFromCatalogAsync(bots, CancellationToken.None)
+                    .ConfigureAwait(true);
+            }
+
             await RefreshAsync().ConfigureAwait(true);
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Contacts scan");
-            await DisplayAlert(Loc.T("tab.contacts"), ex.Message, Loc.T("ok")).ConfigureAwait(true);
+            await DisplayAlert(LocalizationUtils.GetStringByKey("tab.contacts"), ex.Message, LocalizationUtils.GetStringByKey("ok")).ConfigureAwait(true);
         }
         finally
         {
@@ -123,20 +142,30 @@ public partial class ContactsPage : ContentPage
         }
 
         var chats = await _chats.ListChatsAsync(u.Id).ConfigureAwait(false);
+        var versions = _p2p.MessengerServers == null
+            ? new Dictionary<string, string>(StringComparer.Ordinal)
+            : await _p2p.MessengerServers.DescribeBotVersionsAsync().ConfigureAwait(false);
         var built = new List<ContactRow>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
         foreach (var c in chats)
         {
-            seen.Add(ChatRepository.CanonicalPeerNetworkId(c.PeerNetworkIdShort));
+            var chatId = ChatRepository.CanonicalPeerNetworkId(c.PeerNetworkIdShort);
+            seen.Add(chatId);
             await TrySyncChatNicknameFromLanAsync(c).ConfigureAwait(false);
+            var chatPeer = FindPeer(chatId);
+            var chatIsBot = c.IsBot || chatPeer?.IsBot == true;
+            var versionText = BotVersionText.Lookup(versions, chatId);
             built.Add(new ContactRow
             {
                 Chat = c,
+                Peer = chatPeer,
                 Name = c.PeerNickname,
-                Detail = c.PeerNetworkIdShort,
+                Detail = versionText.Length > 0 ? versionText : c.PeerNetworkIdShort,
                 Initials = TorgLinkTheme.Initials(c.PeerNickname),
                 AvatarColor = TorgLinkTheme.AvatarColor(c.PeerNetworkIdShort),
-                IsOnline = IsOnline(c.PeerNetworkIdShort, null)
+                IsOnline = chatIsBot ? false : IsOnline(c.PeerNetworkIdShort, chatPeer),
+                IsBot = chatIsBot,
+                BotMark = chatIsBot ? BotMarkText() : ""
             });
         }
 
@@ -147,14 +176,51 @@ public partial class ContactsPage : ContentPage
                 continue;
             seen.Add(id);
             var nick = string.IsNullOrWhiteSpace(p.Nickname) ? id : p.Nickname;
+            var versionText = BotVersionText.Lookup(versions, id);
             built.Add(new ContactRow
             {
                 Peer = p,
                 Name = nick,
-                Detail = $"{id} · {TransportLabel(p)}",
+                Detail = versionText.Length > 0 ? versionText : $"{id} · {TransportLabel(p)}",
                 Initials = TorgLinkTheme.Initials(nick),
                 AvatarColor = TorgLinkTheme.AvatarColor(id),
-                IsOnline = IsOnline(id, p)
+                IsOnline = p.IsBot ? false : IsOnline(id, p),
+                IsBot = p.IsBot,
+                BotMark = p.IsBot ? BotMarkText() : ""
+            });
+        }
+
+        foreach (var mesh in _lora.ListDiscoveredPeers())
+        {
+            var id = ChatRepository.CanonicalPeerNetworkId(mesh.NetworkIdShort);
+            if (id.Length == 0 || !seen.Add(id))
+                continue;
+            var nick = string.IsNullOrWhiteSpace(mesh.Nickname) ? id : mesh.Nickname;
+            DiscoveredLocalPeer? peer = null;
+            try
+            {
+                peer = new DiscoveredLocalPeer(
+                    CompressedNetworkId.FromShortString(id),
+                    nick,
+                    ShortP2P.LoRa.MeshatasticTransportAddress.ToTransportAddress(
+                        new ShortP2P.LoRa.MeshId(Convert.FromHexString(mesh.MeshIdHex))),
+                    LoRaTransportKind.Meshtastic,
+                    new DateTimeOffset(DateTime.SpecifyKind(mesh.LastSeenUtc, DateTimeKind.Utc)),
+                    0);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Skip mesh peer {Id}", id);
+            }
+
+            built.Add(new ContactRow
+            {
+                Peer = peer,
+                Name = nick,
+                Detail = $"{id} · Meshtastic",
+                Initials = TorgLinkTheme.Initials(nick),
+                AvatarColor = TorgLinkTheme.AvatarColor(id),
+                IsOnline = _lora.HasRecentPeer(id)
             });
         }
 
@@ -186,11 +252,25 @@ public partial class ContactsPage : ContentPage
         }
     }
 
+    private DiscoveredLocalPeer? FindPeer(string networkIdShort)
+    {
+        foreach (var peer in _p2p.LocalScan.Clients)
+        {
+            if (ChatRepository.PeerNetworkIdsEqual(peer.NetworkId.ToShortString(), networkIdShort))
+                return peer;
+        }
+
+        return null;
+    }
+
+    private static string BotMarkText() => LocalizationUtils.GetStringByKey("contact.bot_mark");
+
     private bool IsOnline(string networkIdShort, DiscoveredLocalPeer? peer)
     {
         if (peer?.TransportKind == TransportKind.MessengerServer)
             return peer.MessengerServerOnline;
         return _p2p.LocalScan.IsPeerSeenRecentlyOnLan(networkIdShort) ||
+               _lora.HasRecentPeer(networkIdShort) ||
                (peer?.MessengerServerOnline ?? false) ||
                _p2p.LocalScan.Clients.Any(c =>
                    ChatRepository.PeerNetworkIdsEqual(c.NetworkId.ToShortString(), networkIdShort) &&
@@ -215,14 +295,26 @@ public partial class ContactsPage : ContentPage
         {
             TransportKind.Udp => "LAN",
             TransportKind.Bluetooth => "Bluetooth",
-            TransportKind.MessengerServer => Loc.T("network.servers"),
+            TransportKind.MessengerServer => LocalizationUtils.GetStringByKey("network.servers"),
             _ => p.TransportKind.ToString()
         };
 
     private void OnContactRowLoaded(object? sender, EventArgs e)
     {
-        if (sender is View rowRoot)
-            ListRowHighlight.Attach(rowRoot);
+        if (sender is not View rowRoot)
+            return;
+
+        ApplyBotRowColor(rowRoot);
+        rowRoot.BindingContextChanged += (_, _) => ApplyBotRowColor(rowRoot);
+        ListRowHighlight.Attach(rowRoot);
+    }
+
+    private static void ApplyBotRowColor(View rowRoot)
+    {
+        var rest = rowRoot.BindingContext is ContactRow { IsBot: true }
+            ? Color.FromArgb("#F6E27A")
+            : Colors.Transparent;
+        ListRowHighlight.SetRestColor(rowRoot, rest);
     }
 
     private async void OnContactRowTapped(object? sender, TappedEventArgs e)
@@ -253,7 +345,8 @@ public partial class ContactsPage : ContentPage
         }
         catch (Exception ex)
         {
-            await DisplayAlert(Loc.T("tab.contacts"), ex.Message, Loc.T("ok")).ConfigureAwait(true);
+            await DisplayAlert(LocalizationUtils.GetStringByKey("tab.contacts"), ex.Message, LocalizationUtils.GetStringByKey("ok")).ConfigureAwait(true);
         }
     }
 }
+

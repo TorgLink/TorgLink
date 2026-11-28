@@ -1,6 +1,6 @@
 using TorgLink.Maui.Controls;
-using TorgLink.Maui.Localization;
 using TorgLink.Maui.Services;
+using TorgLink.Localization;
 
 namespace TorgLink.Maui;
 
@@ -16,11 +16,11 @@ public sealed class ImagePreviewPage : ContentPage
         _filePath = filePath;
         _displayName = string.IsNullOrWhiteSpace(displayName) ? Path.GetFileName(filePath) : displayName;
         _receivedAt = receivedAt;
-        Title = Loc.T("image.title");
+        Title = LocalizationUtils.GetStringByKey("image.title");
         BackgroundColor = Colors.Black;
         ToolbarItems.Add(new ToolbarItem
         {
-            Text = Loc.T("close"),
+            Text = LocalizationUtils.GetStringByKey("close"),
             Command = new Command(async () => await CloseAsync())
         });
         Content = new Grid
@@ -48,7 +48,7 @@ public sealed class ImagePreviewPage : ContentPage
         }
         catch (Exception ex)
         {
-            await DisplayAlert(Loc.T("save"), ex.Message, Loc.T("ok")).ConfigureAwait(true);
+            await DisplayAlert(LocalizationUtils.GetStringByKey("save"), ex.Message, LocalizationUtils.GetStringByKey("ok")).ConfigureAwait(true);
         }
     }
 
@@ -60,3 +60,4 @@ public sealed class ImagePreviewPage : ContentPage
             await Navigation.PopAsync().ConfigureAwait(true);
     }
 }
+

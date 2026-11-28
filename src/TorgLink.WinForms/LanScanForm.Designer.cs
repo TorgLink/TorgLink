@@ -6,8 +6,10 @@ partial class LanScanForm
     private System.Windows.Forms.TableLayoutPanel _root;
     private Label _hint;
     private Label _status;
+    private System.Windows.Forms.TextBox _search;
     private System.Windows.Forms.ListView _list;
     private System.Windows.Forms.ColumnHeader _colName;
+    private System.Windows.Forms.ColumnHeader _colBot;
     private System.Windows.Forms.ColumnHeader _colNetworkId;
     private System.Windows.Forms.ColumnHeader _colTransport;
     private System.Windows.Forms.ColumnHeader _colStatus;
@@ -33,8 +35,10 @@ partial class LanScanForm
         this._root = new System.Windows.Forms.TableLayoutPanel();
         this._hint = new System.Windows.Forms.Label();
         this._status = new System.Windows.Forms.Label();
+        this._search = new System.Windows.Forms.TextBox();
         this._list = new System.Windows.Forms.ListView();
         this._colName = new System.Windows.Forms.ColumnHeader();
+        this._colBot = new System.Windows.Forms.ColumnHeader();
         this._colNetworkId = new System.Windows.Forms.ColumnHeader();
         this._colTransport = new System.Windows.Forms.ColumnHeader();
         this._colStatus = new System.Windows.Forms.ColumnHeader();
@@ -53,13 +57,15 @@ partial class LanScanForm
         this._root.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Absolute, 20F));
         this._root.Controls.Add(this._hint, 0, 0);
         this._root.Controls.Add(this._status, 0, 1);
-        this._root.Controls.Add(this._list, 0, 2);
-        this._root.Controls.Add(this._bottom, 0, 3);
+        this._root.Controls.Add(this._search, 0, 2);
+        this._root.Controls.Add(this._list, 0, 3);
+        this._root.Controls.Add(this._bottom, 0, 4);
         this._root.Dock = System.Windows.Forms.DockStyle.Fill;
         this._root.Location = new System.Drawing.Point(0, 0);
         this._root.Name = "_root";
         this._root.Padding = new System.Windows.Forms.Padding(12);
-        this._root.RowCount = 4;
+        this._root.RowCount = 5;
+        this._root.RowStyles.Add(new System.Windows.Forms.RowStyle());
         this._root.RowStyles.Add(new System.Windows.Forms.RowStyle());
         this._root.RowStyles.Add(new System.Windows.Forms.RowStyle());
         this._root.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 100F));
@@ -87,18 +93,28 @@ partial class LanScanForm
         this._status.Size = new System.Drawing.Size(0, 21);
         this._status.TabIndex = 1;
         // 
+        // _search
+        // 
+        this._search.Dock = System.Windows.Forms.DockStyle.Fill;
+        this._search.Location = new System.Drawing.Point(15, 78);
+        this._search.Margin = new System.Windows.Forms.Padding(0, 0, 0, 6);
+        this._search.Name = "_search";
+        this._search.Size = new System.Drawing.Size(714, 29);
+        this._search.TabIndex = 2;
+        // 
         // _list
         // 
-        this._list.Columns.AddRange(new System.Windows.Forms.ColumnHeader[] { this._colName, this._colNetworkId, this._colTransport, this._colStatus, this._colAbout, this._colLastSeen });
+        this._list.Columns.AddRange(new System.Windows.Forms.ColumnHeader[] { this._colName, this._colBot, this._colNetworkId, this._colTransport, this._colStatus, this._colAbout, this._colLastSeen });
         this._list.Dock = System.Windows.Forms.DockStyle.Fill;
         this._list.FullRowSelect = true;
         this._list.GridLines = true;
         this._list.HideSelection = false;
-        this._list.Location = new System.Drawing.Point(15, 78);
+        this._list.ShowItemToolTips = true;
+        this._list.Location = new System.Drawing.Point(15, 113);
         this._list.MultiSelect = false;
         this._list.Name = "_list";
-        this._list.Size = new System.Drawing.Size(714, 277);
-        this._list.TabIndex = 2;
+        this._list.Size = new System.Drawing.Size(714, 242);
+        this._list.TabIndex = 3;
         this._list.UseCompatibleStateImageBehavior = false;
         this._list.View = System.Windows.Forms.View.Details;
         // 
@@ -106,6 +122,11 @@ partial class LanScanForm
         // 
         this._colName.Text = "Имя";
         this._colName.Width = 160;
+        // 
+        // _colBot
+        // 
+        this._colBot.Text = "Бот";
+        this._colBot.Width = 420;
         // 
         // _colNetworkId
         // 

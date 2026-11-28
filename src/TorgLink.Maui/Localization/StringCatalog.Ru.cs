@@ -66,6 +66,8 @@ internal static partial class StringCatalog
         ["contact.nickname"] = "Ник",
         ["contact.network_id"] = "Network ID",
         ["contact.about"] = "О себе",
+        ["contact.bot"] = "Бот",
+        ["contact.bot_mark"] = "бот",
         ["contact.not_set"] = "Не указано",
         ["profile.title"] = "Мой профиль",
         ["profile.save"] = "Сохранить",
@@ -87,6 +89,7 @@ internal static partial class StringCatalog
         ["blacklist.add"] = "В чёрный список",
         ["blacklist.add_title"] = "Чёрный список",
         ["blacklist.add_body"] = "Скрыть «{0}»: сообщения и приглашения будут приниматься, но не показываться, уведомлений не будет.",
+        ["blacklist.add_body_bot"] = "Заблокировать бота «{0}»: скрыть локально и отправить жалобу (claim) на серверы, где он представлен.",
         ["blacklist.add_hint"] = "В чёрный список",
         ["blacklist.unblock"] = "Убрать",
         ["blacklist.blocked"] = "Этот пользователь в чёрном списке.",
@@ -119,6 +122,7 @@ internal static partial class StringCatalog
         ["settings.udp"] = "UDP (локальный порт)",
         ["settings.lan"] = "LAN-сканирование",
         ["settings.routing"] = "P2P-маршрутизация",
+        ["settings.visible_for_search"] = "Видим для поиска",
         ["settings.database"] = "База данных",
         ["settings.database_hint"] = "Требуется перезагрузка приложения",
         ["settings.database_change_title"] = "Изменение базы данных",
@@ -130,7 +134,10 @@ internal static partial class StringCatalog
         ["settings.connection_test"] = "Тест соединения",
         ["settings.logs"] = "Журнал",
         ["settings.about"] = "О приложении",
-        ["settings.logout"] = "Выйти",
+        ["settings.logout"] = "Разлогиниться",
+        ["settings.mlkem"] = "Квантовое шифрование (ML-KEM) при установке сессии",
+        ["settings.lora_mlkem_warning"] =
+            "При связи по LoRa может быть доступно только классическое согласование сессии (без ML-KEM).",
         ["settings.storage_mb"] = "Использовано {0:0.0} МБ",
         ["settings.storage_gb"] = "Использовано {0:0.0} ГБ",
         ["settings.about_body"] = "Mesh-мессенджер.\nВерсия 0.1\nAndroid 5.0 (API 21)+",
@@ -168,6 +175,12 @@ internal static partial class StringCatalog
         ["chat.file_type_mismatch"] = "Содержимое не совпадает с типом файла.",
         ["chat.file_empty"] = "Файл пустой.",
         ["chat.video"] = "Видео",
+        ["chat.video_meshtastic_forbidden"] =
+            "Передача бинарных данных (голос, изображения, документы) по пути Meshtastic запрещена.",
+        ["chat.binary_meshtastic_forbidden"] =
+            "Передача бинарных данных (голос, изображения, документы) по пути Meshtastic запрещена.",
+        ["chat.text_meshtastic_too_long"] =
+            "По пути Meshtastic текст не длиннее {0} символов. Сократите сообщение, чтобы отправить.",
         ["chat.video_too_big"] =
             "Видео больше лимита. Сжать до {0}?",
         ["chat.size"] = "Размер",
@@ -201,6 +214,7 @@ internal static partial class StringCatalog
         ["chat.state.tap_download"] = "нажмите — скачать",
         ["chat.state.tap_play"] = "нажмите — слушать",
         ["chat.state.tap_row"] = "нажмите строку — Скачать",
+        ["chat.scroll_new"] = "Новые",
         ["chat.kb"] = "{0} КБ",
         ["image.title"] = "Изображение",
         ["copied"] = "Скопировано",
@@ -348,5 +362,6 @@ internal static partial class StringCatalog
         ["chat.delivery_issue"] = "Проблема с доставкой текущего сообщения.",
         ["chat.mic_denied"] = "Нет разрешения на запись звука.",
         ["chat.voice_file_fail"] = "Не удалось получить записанный голосовой файл.",
+        ["chat.voice_recording"] = "Запись… {0} с",
     };
 }

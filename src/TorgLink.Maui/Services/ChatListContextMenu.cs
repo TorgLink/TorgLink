@@ -1,7 +1,8 @@
-using TorgLink.Maui.Localization;
 using ShortP2P.Auth;
 using ShortP2P.Client.Data;
 using ShortP2P.Client.Services;
+using ShortP2P.Client.Services.MessengerServers;
+using TorgLink.Localization;
 
 namespace TorgLink.Maui.Services;
 
@@ -25,6 +26,7 @@ internal static class ChatListContextMenu
         public required Page Host { get; init; }
         public required AuthService Auth { get; init; }
         public required PeerBlacklist Blacklist { get; init; }
+        public required MessengerServerManager MessengerServers { get; init; }
         public required ChatRepository Chats { get; init; }
         public required UserP2pRuntime P2p { get; init; }
         public Func<Task>? AfterChange { get; init; }
@@ -106,7 +108,7 @@ internal static class ChatListContextMenu
 
         // На Windows правый клик открывает нативное меню; тексты пересобираем при смене BindingContext/языка.
         var flyout = new MenuFlyout();
-        var viewContact = new MenuFlyoutItem { Text = Loc.T("chatmenu.view_contact") };
+        var viewContact = new MenuFlyoutItem { Text = LocalizationUtils.GetStringByKey("chatmenu.view_contact") };
         viewContact.Clicked += async (_, _) => await ViewContactAsync(row, deps).ConfigureAwait(true);
         flyout.Add(viewContact);
 
@@ -114,12 +116,12 @@ internal static class ChatListContextMenu
         var blocked = u != null && deps.Blacklist.IsBlocked(u.Id, row.PeerNetworkIdShort);
         var block = new MenuFlyoutItem
         {
-            Text = Loc.T(blocked ? "chatmenu.unblock" : "chatmenu.block")
+            Text = LocalizationUtils.GetStringByKey(blocked ? "chatmenu.unblock" : "chatmenu.block")
         };
         block.Clicked += async (_, _) => await ToggleBlockAsync(row, deps).ConfigureAwait(true);
         flyout.Add(block);
 
-        var delete = new MenuFlyoutItem { Text = Loc.T("chatmenu.delete_chat") };
+        var delete = new MenuFlyoutItem { Text = LocalizationUtils.GetStringByKey("chatmenu.delete_chat") };
         delete.Clicked += async (_, _) => await DeleteChatAsync(row, deps).ConfigureAwait(true);
         flyout.Add(delete);
 
@@ -178,18 +180,18 @@ internal static class ChatListContextMenu
     {
         var u = deps.Auth.CurrentUser;
         var blocked = u != null && deps.Blacklist.IsBlocked(u.Id, row.PeerNetworkIdShort);
-        var view = Loc.T("chatmenu.view_contact");
-        var block = Loc.T(blocked ? "chatmenu.unblock" : "chatmenu.block");
-        var delete = Loc.T("chatmenu.delete_chat");
+        var view = LocalizationUtils.GetStringByKey("chatmenu.view_contact");
+        var block = LocalizationUtils.GetStringByKey(blocked ? "chatmenu.unblock" : "chatmenu.block");
+        var delete = LocalizationUtils.GetStringByKey("chatmenu.delete_chat");
 
         var action = await deps.Host.DisplayActionSheet(
             row.PeerNickname,
-            Loc.T("cancel"),
+            LocalizationUtils.GetStringByKey("cancel"),
             delete,
             view,
             block).ConfigureAwait(true);
 
-        if (string.IsNullOrEmpty(action) || action == Loc.T("cancel"))
+        if (string.IsNullOrEmpty(action) || action == LocalizationUtils.GetStringByKey("cancel"))
             return;
         if (action == view)
             await ViewContactAsync(row, deps).ConfigureAwait(true);
@@ -220,8 +222,9 @@ internal static class ChatListContextMenu
             return;
         }
 
-        await BlacklistUi.ConfirmAndBlockAsync(deps.Host, deps.Blacklist, u.Id, row.PeerNetworkIdShort,
-            row.PeerNickname).ConfigureAwait(true);
+        await BlacklistUi.ConfirmAndBlockAsync(
+            deps.Host, deps.Blacklist, u.Id, row.PeerNetworkIdShort, row.PeerNickname,
+            row.Chat.IsBot, deps.MessengerServers).ConfigureAwait(true);
         if (deps.AfterChange != null)
             await deps.AfterChange().ConfigureAwait(true);
     }
@@ -234,10 +237,10 @@ internal static class ChatListContextMenu
 
         var chat = row.Chat;
         var confirm = await deps.Host.DisplayAlert(
-            Loc.T("chats.delete_title"),
-            Loc.Tf("chats.delete_body", chat.PeerNickname),
-            Loc.T("delete"),
-            Loc.T("cancel")).ConfigureAwait(true);
+            LocalizationUtils.GetStringByKey("chats.delete_title"),
+            LocalizationUtils.GetStringByKeyWithFormat("chats.delete_body", chat.PeerNickname),
+            LocalizationUtils.GetStringByKey("delete"),
+            LocalizationUtils.GetStringByKey("cancel")).ConfigureAwait(true);
         if (!confirm)
             return;
 
@@ -252,3 +255,4 @@ internal static class ChatListContextMenu
             await deps.AfterChange().ConfigureAwait(true);
     }
 }
+

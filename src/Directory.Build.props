@@ -1,5 +1,6 @@
 <Project>
     <PropertyGroup>
+        <Version>0.2.0</Version>
         <NetCoreTargetFramework>net10.0</NetCoreTargetFramework>
         <MicrosoftExtensionsVersion>10.0.0</MicrosoftExtensionsVersion>
 

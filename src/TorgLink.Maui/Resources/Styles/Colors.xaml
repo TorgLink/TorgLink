@@ -12,6 +12,7 @@
     <Color x:Key="OutgoingBubble">#FF6A00</Color>
     <Color x:Key="PageBackground">#121212</Color>
     <Color x:Key="Surface">#1E1E20</Color>
+    <Color x:Key="ChatSidebarBackground">#2F4F4F</Color>
     <Color x:Key="FieldBackground">#2A2A2C</Color>
     <Color x:Key="TextPrimary">#FFFFFF</Color>
     <Color x:Key="MutedText">#8E8E93</Color>

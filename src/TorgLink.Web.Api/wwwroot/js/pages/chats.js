@@ -36,7 +36,7 @@ export function ChatsPage() {
                 rows = rows.filter((x) => x.id !== c.id);
                 renderList();
               }
-              if (choice === "2" && window.confirm(t("blacklist.add_body", c.nick))) {
+              if (choice === "2" && window.confirm(t(c.isBot ? "blacklist.add_body_bot" : "blacklist.add_body", c.nick))) {
                 await post(`/api/chats/${c.id}/block`);
                 rows = rows.filter((x) => x.id !== c.id);
                 renderList();

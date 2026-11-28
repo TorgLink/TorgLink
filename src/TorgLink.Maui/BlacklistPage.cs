@@ -1,8 +1,8 @@
 using System.Collections.ObjectModel;
-using TorgLink.Maui.Localization;
 using ShortP2P.Auth;
 using ShortP2P.Client.Data;
 using ShortP2P.Client.Services;
+using TorgLink.Localization;
 
 namespace TorgLink.Maui;
 
@@ -34,7 +34,7 @@ public sealed class BlacklistPage : ContentPage
             {
                 FontSize = 13,
                 Padding = new Thickness(10, 6),
-                Text = Loc.T("blacklist.unblock")
+                Text = LocalizationUtils.GetStringByKey("blacklist.unblock")
             };
             un.SetBinding(Button.CommandParameterProperty, ".");
             un.Clicked += OnUnblockClicked;
@@ -57,9 +57,9 @@ public sealed class BlacklistPage : ContentPage
     protected override async void OnAppearing()
     {
         base.OnAppearing();
-        Title = Loc.T("blacklist.title");
+        Title = LocalizationUtils.GetStringByKey("blacklist.title");
         if (_list.EmptyView is Label empty)
-            empty.Text = Loc.T("blacklist.empty");
+            empty.Text = LocalizationUtils.GetStringByKey("blacklist.empty");
         await ReloadAsync().ConfigureAwait(true);
     }
 
@@ -88,3 +88,4 @@ public sealed class BlacklistPage : ContentPage
         await ReloadAsync().ConfigureAwait(true);
     }
 }
+

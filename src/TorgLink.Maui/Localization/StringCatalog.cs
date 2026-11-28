@@ -1,3 +1,5 @@
+using TorgLink.Localization;
+
 namespace TorgLink.Maui.Localization;
 
 internal static partial class StringCatalog

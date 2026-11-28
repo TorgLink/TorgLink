@@ -1,4 +1,4 @@
-using TorgLink.Maui.Localization;
+using TorgLink.Localization;
 
 namespace TorgLink.Maui;
 
@@ -31,9 +31,9 @@ public partial class AppShell : Shell
 
     private void ApplyLocalizedTitles()
     {
-        var chats = Loc.T("tab.chats");
-        var contacts = Loc.T("tab.contacts");
-        var network = Loc.T("tab.network");
+        var chats = LocalizationUtils.GetStringByKey("tab.chats");
+        var contacts = LocalizationUtils.GetStringByKey("tab.contacts");
+        var network = LocalizationUtils.GetStringByKey("tab.network");
 
         // TabBar reads Tab.Title (not ShellContent). Named tabs so we never miss the section.
         ChatsTab.Title = chats;
@@ -103,3 +103,4 @@ public partial class AppShell : Shell
         return false;
     }
 }
+

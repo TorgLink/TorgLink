@@ -23,7 +23,12 @@ public partial class App : MauiWinUIApplication
         this.InitializeComponent();
         UnhandledException += (_, e) =>
         {
-            NLog.LogManager.GetLogger("GlobalExceptions").Error(e.Exception, "WinUI UnhandledException");
+            var sb = new System.Text.StringBuilder();
+            for (var ex = e.Exception; ex != null; ex = ex.InnerException)
+                sb.Append(" -> ").Append(ex.GetType().FullName).Append(" hr=0x")
+                  .Append(unchecked((uint)ex.HResult).ToString("X8")).Append(": ").Append(ex.Message);
+            NLog.LogManager.GetLogger("GlobalExceptions")
+                .Error("WinUI UnhandledException (Handled={Handled}): {Chain}", sb.ToString());
             NLog.LogManager.Flush();
         };
     }

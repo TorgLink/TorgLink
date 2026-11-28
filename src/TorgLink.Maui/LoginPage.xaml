@@ -19,6 +19,8 @@
             <Button x:Name="SignInButton" Clicked="OnLoginClicked" />
             <Button x:Name="CreateAccountButton" Clicked="OnRegisterNavigateClicked"
                     BackgroundColor="Transparent" TextColor="{DynamicResource Accent}" />
+            <Button x:Name="ImportProfileButton" Clicked="OnImportProfileClicked"
+                    BackgroundColor="Transparent" TextColor="{DynamicResource Accent}" />
         </VerticalStackLayout>
     </ScrollView>
 </ContentPage>

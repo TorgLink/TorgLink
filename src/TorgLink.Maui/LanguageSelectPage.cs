@@ -1,4 +1,4 @@
-using TorgLink.Maui.Localization;
+using TorgLink.Localization;
 
 namespace TorgLink.Maui;
 
@@ -42,7 +42,7 @@ public sealed class LanguageSelectPage : ContentPage
         });
         var title = new Label
         {
-            Text = Loc.T("lang.choose"),
+            Text = LocalizationUtils.GetStringByKey("lang.choose"),
             FontSize = 18,
             FontAttributes = FontAttributes.Bold,
             TextColor = TorgLinkTheme.Text,
@@ -66,7 +66,7 @@ public sealed class LanguageSelectPage : ContentPage
             button.Clicked += (_, _) =>
             {
                 _selected = captured;
-                title.Text = Loc.T("lang.choose"); // may still be previous culture until Set
+                title.Text = LocalizationUtils.GetStringByKey("lang.choose"); // may still be previous culture until Set
                 RefreshWarning();
                 Highlight(stack, captured);
             };
@@ -74,7 +74,7 @@ public sealed class LanguageSelectPage : ContentPage
         }
 
         stack.Children.Add(_warning);
-        var cont = new Button { Text = Loc.T("lang.continue") };
+        var cont = new Button { Text = LocalizationUtils.GetStringByKey("lang.continue") };
         cont.Clicked += OnContinue;
         stack.Children.Add(cont);
         Content = new ScrollView { Content = stack };
@@ -112,3 +112,4 @@ public sealed class LanguageSelectPage : ContentPage
             new NavigationPage(MauiProgram.Services.GetRequiredService<LoginPage>());
     }
 }
+

@@ -1,4 +1,3 @@
-using TorgLink.Maui.Localization;
 using TorgLink.Maui.Services;
 using Microsoft.Extensions.Logging;
 using ShortP2P.Client.Bluetooth;
@@ -6,6 +5,7 @@ using ShortP2P.Client.Routing;
 using ShortP2P.Client.Services;
 using ShortP2P.Discovery;
 using ShortP2P.Transport;
+using TorgLink.Localization;
 
 namespace TorgLink.Maui;
 
@@ -117,19 +117,19 @@ public class RoutingSettingsPage : ContentPage
 
     private void ApplyLocalizedUi()
     {
-        Title = Loc.T("routing.title");
-        _maxDepthLabel.Text = Loc.T("routing.max_depth");
-        _attemptsLabel.Text = Loc.T("routing.attempts");
-        _delayLabel.Text = Loc.T("routing.delay");
-        _timeoutLabel.Text = Loc.T("routing.timeout");
-        _speedLabel.Text = Loc.T("routing.speed");
-        _udpLabel.Text = Loc.T("routing.udp");
-        _btLabel.Text = Loc.T("routing.bt");
-        _btAdapterLabel.Text = Loc.T("routing.bt_adapter");
-        _btPairLabel.Text = Loc.T("routing.bt_pair");
-        _shareRoutesLabel.Text = Loc.T("routing.share_routes");
-        _saveButton.Text = Loc.T("save");
-        _maxHops.Placeholder = Loc.T("routing.depth_ph");
+        Title = LocalizationUtils.GetStringByKey("routing.title");
+        _maxDepthLabel.Text = LocalizationUtils.GetStringByKey("routing.max_depth");
+        _attemptsLabel.Text = LocalizationUtils.GetStringByKey("routing.attempts");
+        _delayLabel.Text = LocalizationUtils.GetStringByKey("routing.delay");
+        _timeoutLabel.Text = LocalizationUtils.GetStringByKey("routing.timeout");
+        _speedLabel.Text = LocalizationUtils.GetStringByKey("routing.speed");
+        _udpLabel.Text = LocalizationUtils.GetStringByKey("routing.udp");
+        _btLabel.Text = LocalizationUtils.GetStringByKey("routing.bt");
+        _btAdapterLabel.Text = LocalizationUtils.GetStringByKey("routing.bt_adapter");
+        _btPairLabel.Text = LocalizationUtils.GetStringByKey("routing.bt_pair");
+        _shareRoutesLabel.Text = LocalizationUtils.GetStringByKey("routing.share_routes");
+        _saveButton.Text = LocalizationUtils.GetStringByKey("save");
+        _maxHops.Placeholder = LocalizationUtils.GetStringByKey("routing.depth_ph");
     }
 
     private async Task LoadBluetoothAdaptersAsync(P2pRoutingSettings settings)
@@ -142,7 +142,7 @@ public class RoutingSettingsPage : ContentPage
             _adapterRadios.AddRange(radios);
             foreach (var r in radios)
             {
-                var suffix = r.IsDefault ? Loc.T("routing.default") : string.Empty;
+                var suffix = r.IsDefault ? LocalizationUtils.GetStringByKey("routing.default") : string.Empty;
                 _bluetoothAdapter.Items.Add($"{r.DisplayName} ({r.MacString}){suffix}");
             }
 
@@ -167,7 +167,7 @@ public class RoutingSettingsPage : ContentPage
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Could not list Bluetooth adapters");
-            _bluetoothAdapter.Items.Add(Loc.T("routing.adapters_unavailable"));
+            _bluetoothAdapter.Items.Add(LocalizationUtils.GetStringByKey("routing.adapters_unavailable"));
             _bluetoothAdapter.SelectedIndex = 0;
         }
     }
@@ -191,25 +191,25 @@ public class RoutingSettingsPage : ContentPage
     {
         if (!int.TryParse(_maxHops.Text, out var mh) || mh is < 1 or > 3)
         {
-            await DisplayAlert(Loc.T("error"), Loc.T("routing.err_depth"), Loc.T("ok")).ConfigureAwait(true);
+            await DisplayAlert(LocalizationUtils.GetStringByKey("error"), LocalizationUtils.GetStringByKey("routing.err_depth"), LocalizationUtils.GetStringByKey("ok")).ConfigureAwait(true);
             return;
         }
 
         if (!int.TryParse(_attempts.Text, out var at) || at < 1)
         {
-            await DisplayAlert(Loc.T("error"), Loc.T("routing.err_attempts"), Loc.T("ok")).ConfigureAwait(true);
+            await DisplayAlert(LocalizationUtils.GetStringByKey("error"), LocalizationUtils.GetStringByKey("routing.err_attempts"), LocalizationUtils.GetStringByKey("ok")).ConfigureAwait(true);
             return;
         }
 
         if (!int.TryParse(_delayMs.Text, out var dm) || dm < 0)
         {
-            await DisplayAlert(Loc.T("error"), Loc.T("routing.err_delay"), Loc.T("ok")).ConfigureAwait(true);
+            await DisplayAlert(LocalizationUtils.GetStringByKey("error"), LocalizationUtils.GetStringByKey("routing.err_delay"), LocalizationUtils.GetStringByKey("ok")).ConfigureAwait(true);
             return;
         }
 
         if (!int.TryParse(_searchTimeoutMs.Text, out var st) || st < 500)
         {
-            await DisplayAlert(Loc.T("error"), Loc.T("routing.err_timeout"), Loc.T("ok")).ConfigureAwait(true);
+            await DisplayAlert(LocalizationUtils.GetStringByKey("error"), LocalizationUtils.GetStringByKey("routing.err_timeout"), LocalizationUtils.GetStringByKey("ok")).ConfigureAwait(true);
             return;
         }
 
@@ -264,3 +264,4 @@ public class RoutingSettingsPage : ContentPage
         await Navigation.PopAsync().ConfigureAwait(true);
     }
 }
+

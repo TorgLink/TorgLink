@@ -46,13 +46,20 @@
                                         BackgroundColor="{Binding AvatarColor}"
                                         HorizontalOptions="Center" VerticalOptions="Center" />
                                 <Label Text="{Binding Initials}" TextColor="White" FontAttributes="Bold" FontSize="15"
-                                       HorizontalOptions="Center" VerticalOptions="Center" />
+                                       HorizontalOptions="Center" VerticalOptions="Center"
+                                       IsVisible="{Binding ShowInitials}" />
+                                <Border WidthRequest="48" HeightRequest="48" StrokeThickness="0"
+                                        StrokeShape="RoundRectangle 24"
+                                        HorizontalOptions="Center" VerticalOptions="Center"
+                                        IsVisible="{Binding HasAvatar}">
+                                    <Image Source="{Binding AvatarImage}" Aspect="AspectFill" />
+                                </Border>
                                 <Ellipse WidthRequest="12" HeightRequest="12" Fill="#34C759"
                                          HorizontalOptions="End" VerticalOptions="End" Stroke="White"
                                          StrokeThickness="2" IsVisible="{Binding IsPeerOnline}" />
                             </Grid>
                             <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
-                                <Label Text="{Binding PeerNickname}" FontSize="16" FontAttributes="Bold"
+                                <Label Text="{Binding DisplayName}" FontSize="16" FontAttributes="Bold"
                                        TextColor="{DynamicResource MidnightBlue}" LineBreakMode="TailTruncation" />
                                 <Label Text="{Binding LastPreview}" FontSize="13"
                                        TextColor="{DynamicResource MutedText}" LineBreakMode="TailTruncation" />

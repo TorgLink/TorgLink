@@ -1,3 +1,4 @@
+using TorgLink.Localization;
 namespace TorgLink.Maui;
 
 public enum ThemeKind
@@ -30,7 +31,7 @@ public sealed record ThemePalette(
     Color Offline,
     Color Danger)
 {
-    public string Title => Localization.Loc.T(TitleKey);
+    public string Title => LocalizationUtils.GetStringByKey(TitleKey);
 }
 
 public static class ThemeCatalog

@@ -1,5 +1,5 @@
-using TorgLink.Maui.Localization;
 using TorgLink.Maui.Services;
+using TorgLink.Localization;
 
 namespace TorgLink.Maui;
 
@@ -51,9 +51,9 @@ public class LogsPage : ContentPage
     protected override void OnAppearing()
     {
         base.OnAppearing();
-        Title = Loc.T("logs.title");
-        _copyItem.Text = Loc.T("copy");
-        _refreshItem.Text = Loc.T("refresh");
+        Title = LocalizationUtils.GetStringByKey("logs.title");
+        _copyItem.Text = LocalizationUtils.GetStringByKey("copy");
+        _refreshItem.Text = LocalizationUtils.GetStringByKey("refresh");
         RefreshLogs();
         EnsureRefreshTimerStarted();
     }
@@ -84,8 +84,8 @@ public class LogsPage : ContentPage
     {
         var text = AppLogReader.ReadTodayLog(out var path);
         _pathLabel.Text = path == null
-            ? Loc.T("logs.path_none")
-            : Loc.Tf("logs.path", path);
+            ? LocalizationUtils.GetStringByKey("logs.path_none")
+            : LocalizationUtils.GetStringByKeyWithFormat("logs.path", path);
         _logEditor.Text = text;
     }
 
@@ -95,6 +95,7 @@ public class LogsPage : ContentPage
             return;
 
         await Clipboard.Default.SetTextAsync(_logEditor.Text).ConfigureAwait(true);
-        await DisplayAlert(Loc.T("copied"), Loc.T("logs.copied"), Loc.T("ok")).ConfigureAwait(true);
+        await DisplayAlert(LocalizationUtils.GetStringByKey("copied"), LocalizationUtils.GetStringByKey("logs.copied"), LocalizationUtils.GetStringByKey("ok")).ConfigureAwait(true);
     }
 }
+

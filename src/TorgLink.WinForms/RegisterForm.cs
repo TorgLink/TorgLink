@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using ShortP2P.Auth;
+using TorgLink.Localization;
 
 namespace TorgLink.WinForms;
 
@@ -19,6 +20,16 @@ public sealed partial class RegisterForm : AppForm
         _auth = auth;
         _logger = logger;
         _ok.Click += async (_, _) => await OnRegisterAsync().ConfigureAwait(true);
+        ApplyLocalizedUi();
+    }
+
+    protected override void ApplyLocalizedUi()
+    {
+        Text = "TorgLink — " + LocalizationUtils.GetStringByKey("register.header");
+        _lblNick.Text = LocalizationUtils.GetStringByKey("login.nick");
+        _lblPass.Text = LocalizationUtils.GetStringByKey("login.password");
+        _ok.Text = LocalizationUtils.GetStringByKey("register.button");
+        _cancel.Text = LocalizationUtils.GetStringByKey("cancel");
     }
 
     private async Task OnRegisterAsync()
@@ -27,13 +38,16 @@ public sealed partial class RegisterForm : AppForm
         if (!ok)
         {
             _logger.LogWarning("Register failed: {Reason}", err);
-            MessageBox.Show(this, err ?? "Регистрация не удалась.", "Регистрация", MessageBoxButtons.OK,
+            MessageBox.Show(this, err ?? LocalizationUtils.GetStringByKey("register.failed"),
+                LocalizationUtils.GetStringByKey("register.header"), MessageBoxButtons.OK,
                 MessageBoxIcon.Warning);
             return;
         }
 
         var id = _auth.CurrentUser?.NetworkIdShort ?? "";
-        MessageBox.Show(this, "Network id:\n" + id, "Аккаунт создан", MessageBoxButtons.OK,
+        MessageBox.Show(this,
+            LocalizationUtils.GetStringByKeyWithFormat("register.network_id", id),
+            LocalizationUtils.GetStringByKey("register.created"), MessageBoxButtons.OK,
             MessageBoxIcon.Information);
         DialogResult = DialogResult.OK;
         Close();

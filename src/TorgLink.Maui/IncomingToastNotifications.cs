@@ -1,10 +1,10 @@
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.ComTypes;
 using System.Text;
-using TorgLink.Maui.Localization;
 using Microsoft.Extensions.Logging;
 using ShortP2P.Auth;
 using ShortP2P.Client.Services;
+using TorgLink.Localization;
 #if WINDOWS
 using Windows.Data.Xml.Dom;
 using Windows.UI.Notifications;
@@ -78,16 +78,16 @@ internal static class IncomingToastNotifications
             string body;
             if (isNewChat)
             {
-                title = Loc.T("notify.new_chat");
+                title = LocalizationUtils.GetStringByKey("notify.new_chat");
                 var nick = string.IsNullOrWhiteSpace(chat.PeerNickname)
                     ? chat.PeerNetworkIdShort
                     : chat.PeerNickname;
-                body = Loc.Tf("notify.new_chat_body", nick);
+                body = LocalizationUtils.GetStringByKeyWithFormat("notify.new_chat_body", nick);
             }
             else
             {
                 title = string.IsNullOrWhiteSpace(chat.PeerNickname)
-                    ? Loc.T("notify.new_message")
+                    ? LocalizationUtils.GetStringByKey("notify.new_message")
                     : chat.PeerNickname;
                 var last = (await repo.ListMessagesPageDescAsync(chatId, 0, 1, includePayloadBlob: false)
                     .ConfigureAwait(false))
@@ -160,7 +160,7 @@ internal static class IncomingToastNotifications
             if (!Preferences.Default.Get("toast_probe_v2", false))
             {
                 Preferences.Default.Set("toast_probe_v2", true);
-                ShowToast(0, "TorgLink", Loc.T("notify.new_message"));
+                ShowToast(0, "TorgLink", LocalizationUtils.GetStringByKey("notify.new_message"));
             }
         }
         catch (Exception ex)
@@ -333,3 +333,4 @@ internal static class IncomingToastNotifications
     }
 #endif
 }
+

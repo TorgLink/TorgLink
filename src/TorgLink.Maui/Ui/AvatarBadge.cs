@@ -18,7 +18,7 @@ internal static class AvatarBadge
 
         if (avatar is { Length: > 0 })
         {
-            if (avatar.Length > ShortP2P.Auth.Data.PeerProfileLimits.MaxAvatarBytes)
+            if (avatar.Length > ShortP2P.Auth.Data.PeerProfileLimits.MaxAvatarDisplayBytes)
             {
                 // Oversized remote/local blob: show initials, do not bind huge payload into UI.
                 image.Source = null;

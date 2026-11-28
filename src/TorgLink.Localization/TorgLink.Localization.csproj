@@ -1,0 +1,12 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>netstandard1.1</TargetFramework>
+    <RootNamespace>TorgLink.Localization</RootNamespace>
+    <AssemblyName>TorgLink.Localization</AssemblyName>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <!-- Source files are UTF-8; BOM + this avoid CP1251 miscompile on RU Windows -->
+    <Utf8Output>true</Utf8Output>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+</Project>

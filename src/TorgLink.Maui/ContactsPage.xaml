@@ -59,10 +59,31 @@
                                      IsVisible="{Binding IsOnline}" />
                         </Grid>
                         <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
-                            <Label Text="{Binding Name}" FontSize="16" FontAttributes="Bold"
-                                   TextColor="{DynamicResource MidnightBlue}" />
+                            <HorizontalStackLayout Spacing="8">
+                                <Label Text="{Binding Name}" FontSize="16" FontAttributes="Bold"
+                                       TextColor="{DynamicResource MidnightBlue}" VerticalOptions="Center">
+                                    <Label.Triggers>
+                                        <DataTrigger TargetType="Label" Binding="{Binding IsBot}" Value="True">
+                                            <Setter Property="TextColor" Value="#1C1C1E" />
+                                        </DataTrigger>
+                                    </Label.Triggers>
+                                </Label>
+                                <Border IsVisible="{Binding IsBot}" BackgroundColor="#F6E27A"
+                                        Stroke="#C9A227" StrokeThickness="1" Padding="6,1"
+                                        StrokeShape="RoundRectangle 6" VerticalOptions="Center">
+                                    <Label Text="{Binding BotMark}" FontSize="11" FontAttributes="Bold"
+                                           TextColor="#1C1C1E" />
+                                </Border>
+                            </HorizontalStackLayout>
                             <Label Text="{Binding Detail}" FontSize="12" TextColor="{DynamicResource MutedText}"
-                                   LineBreakMode="TailTruncation" />
+                                   LineBreakMode="TailTruncation">
+                                <Label.Triggers>
+                                    <DataTrigger TargetType="Label" Binding="{Binding IsBot}" Value="True">
+                                        <Setter Property="TextColor" Value="#3A3A3C" />
+                                        <Setter Property="LineBreakMode" Value="WordWrap" />
+                                    </DataTrigger>
+                                </Label.Triggers>
+                            </Label>
                         </VerticalStackLayout>
                     </Grid>
                 </DataTemplate>

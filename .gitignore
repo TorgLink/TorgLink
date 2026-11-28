@@ -1,9 +1,11 @@
 bin/
 obj/
 .vs/
+.idea/
 *.user
 *.suo
 src/TorgLink.Maui/bin/
 src/TorgLink.Maui/obj/
 dist/
 node_modules/
+artifacts/

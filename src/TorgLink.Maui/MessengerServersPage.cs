@@ -1,7 +1,6 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
-using TorgLink.Maui.Localization;
 using TorgLink.Maui.Services;
 using Microsoft.Extensions.Logging;
 using Microsoft.Maui.Layouts;
@@ -9,6 +8,7 @@ using ShortP2P.Client.Data;
 using ShortP2P.Client.Qr;
 using ShortP2P.Client.Services.MessengerServers;
 using ShortP2P.TrustSystem;
+using TorgLink.Localization;
 
 namespace TorgLink.Maui;
 
@@ -104,12 +104,12 @@ public sealed class MessengerServersPage : ContentPage
 
     private void ApplyLocalizedUi()
     {
-        Title = Loc.T("servers.title");
-        _introLabel.Text = Loc.T("servers.intro");
-        _baseUrlLabel.Text = Loc.T("servers.base_url");
-        _addButton.Text = Loc.T("servers.add");
-        _importButton.Text = Loc.T("servers.import");
-        _activeHintLabel.Text = Loc.T("servers.active_hint");
+        Title = LocalizationUtils.GetStringByKey("servers.title");
+        _introLabel.Text = LocalizationUtils.GetStringByKey("servers.intro");
+        _baseUrlLabel.Text = LocalizationUtils.GetStringByKey("servers.base_url");
+        _addButton.Text = LocalizationUtils.GetStringByKey("servers.add");
+        _importButton.Text = LocalizationUtils.GetStringByKey("servers.import");
+        _activeHintLabel.Text = LocalizationUtils.GetStringByKey("servers.active_hint");
         _list.ItemTemplate = CreateItemTemplate();
         foreach (var row in _rows)
             row.RefreshMeta();
@@ -131,17 +131,17 @@ public sealed class MessengerServersPage : ContentPage
                 BindingMode.OneWay));
             active.Toggled += OnActiveToggled;
 
-            var share = CreateRowActionButton(Loc.T("servers.share"));
+            var share = CreateRowActionButton(LocalizationUtils.GetStringByKey("servers.share"));
             share.Clicked += OnShareClicked;
 
-            var recheck = CreateRowActionButton(Loc.T("servers.check"));
+            var recheck = CreateRowActionButton(LocalizationUtils.GetStringByKey("servers.check"));
             recheck.Clicked += OnRecheckClicked;
 
-            var ask = CreateRowActionButton(Loc.T("servers.ask"));
+            var ask = CreateRowActionButton(LocalizationUtils.GetStringByKey("servers.ask"));
             ask.SetBinding(VisualElement.IsVisibleProperty, nameof(MessengerServerRowVm.CanAskServers));
             ask.Clicked += OnAskServersClicked;
 
-            var delete = CreateRowActionButton(Loc.T("servers.delete"));
+            var delete = CreateRowActionButton(LocalizationUtils.GetStringByKey("servers.delete"));
             delete.BackgroundColor = Colors.DarkRed;
             delete.TextColor = Colors.White;
             delete.Clicked += OnDeleteClicked;
@@ -220,7 +220,7 @@ public sealed class MessengerServersPage : ContentPage
             foreach (var s in servers.OrderByDescending(x => x.UpdatedUtcTicks))
                 _rows.Add(new MessengerServerRowVm(s));
             UpdatePortraitDisplayMode();
-            _status.Text = Loc.Tf("servers.count", _rows.Count, MessengerServerLimits.MaxServersPerUser);
+            _status.Text = LocalizationUtils.GetStringByKeyWithFormat("servers.count", _rows.Count, MessengerServerLimits.MaxServersPerUser);
         }
         catch (Exception ex)
         {
@@ -238,24 +238,24 @@ public sealed class MessengerServersPage : ContentPage
         var url = _baseUrlEntry.Text?.Trim() ?? "";
         if (string.IsNullOrWhiteSpace(url))
         {
-            await DisplayAlert(Loc.T("error"), Loc.T("servers.need_url"), Loc.T("ok")).ConfigureAwait(true);
+            await DisplayAlert(LocalizationUtils.GetStringByKey("error"), LocalizationUtils.GetStringByKey("servers.need_url"), LocalizationUtils.GetStringByKey("ok")).ConfigureAwait(true);
             return;
         }
 
         _addButton.IsEnabled = false;
-        _status.Text = Loc.T("servers.connecting");
+        _status.Text = LocalizationUtils.GetStringByKey("servers.connecting");
         try
         {
             var entity = await _manager.AddServerAsync(url).ConfigureAwait(true);
             AppLog.ServerResponse("AddServer", entity.BaseUrl, $"id={entity.Id} trusted={entity.Trusted}");
             _baseUrlEntry.Text = "";
-            _status.Text = Loc.Tf("servers.added", entity.BaseUrl);
+            _status.Text = LocalizationUtils.GetStringByKeyWithFormat("servers.added", entity.BaseUrl);
             await ReloadAsync().ConfigureAwait(true);
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Add messenger server");
-            await DisplayAlert(Loc.T("error"), ex.Message, Loc.T("ok")).ConfigureAwait(true);
+            await DisplayAlert(LocalizationUtils.GetStringByKey("error"), ex.Message, LocalizationUtils.GetStringByKey("ok")).ConfigureAwait(true);
             _status.Text = ex.Message;
         }
         finally
@@ -271,7 +271,7 @@ public sealed class MessengerServersPage : ContentPage
 
         if (!MessengerServerQrService.TryBuildPayload(row.BaseUrl, out var payload, out var err))
         {
-            await DisplayAlert(Loc.T("servers.share_title"), err ?? Loc.T("servers.share_fail"), Loc.T("ok"))
+            await DisplayAlert(LocalizationUtils.GetStringByKey("servers.share_title"), err ?? LocalizationUtils.GetStringByKey("servers.share_fail"), LocalizationUtils.GetStringByKey("ok"))
                 .ConfigureAwait(true);
             return;
         }
@@ -284,7 +284,7 @@ public sealed class MessengerServersPage : ContentPage
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Share messenger server QR {Id}", row.Id);
-            await DisplayAlert(Loc.T("servers.share_title"), ex.Message, Loc.T("ok")).ConfigureAwait(true);
+            await DisplayAlert(LocalizationUtils.GetStringByKey("servers.share_title"), ex.Message, LocalizationUtils.GetStringByKey("ok")).ConfigureAwait(true);
         }
     }
 
@@ -295,14 +295,14 @@ public sealed class MessengerServersPage : ContentPage
         {
             picked = await FilePicker.Default.PickAsync(new PickOptions
             {
-                PickerTitle = Loc.T("servers.qr_picker"),
+                PickerTitle = LocalizationUtils.GetStringByKey("servers.qr_picker"),
                 FileTypes = FilePickerFileType.Images
             }).ConfigureAwait(true);
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Pick messenger server QR file");
-            await DisplayAlert(Loc.T("servers.import_title"), ex.Message, Loc.T("ok")).ConfigureAwait(true);
+            await DisplayAlert(LocalizationUtils.GetStringByKey("servers.import_title"), ex.Message, LocalizationUtils.GetStringByKey("ok")).ConfigureAwait(true);
             return;
         }
 
@@ -321,44 +321,44 @@ public sealed class MessengerServersPage : ContentPage
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Read messenger server QR file");
-            await DisplayAlert(Loc.T("servers.import_title"), ex.Message, Loc.T("ok")).ConfigureAwait(true);
+            await DisplayAlert(LocalizationUtils.GetStringByKey("servers.import_title"), ex.Message, LocalizationUtils.GetStringByKey("ok")).ConfigureAwait(true);
             return;
         }
 
         if (!MessengerServerQrService.TryDecodeImage(bytes, out var payload, out var err))
         {
             _logger.LogWarning("Messenger server QR decode failed from file: {Error}", err);
-            await DisplayAlert(Loc.T("servers.import_title"), err ?? Loc.T("servers.import_read_fail"), Loc.T("ok"))
+            await DisplayAlert(LocalizationUtils.GetStringByKey("servers.import_title"), err ?? LocalizationUtils.GetStringByKey("servers.import_read_fail"), LocalizationUtils.GetStringByKey("ok"))
                 .ConfigureAwait(true);
             return;
         }
 
         var url = MessengerServerQrCodec.ToBaseUrl(payload);
         _importButton.IsEnabled = false;
-        _status.Text = Loc.T("servers.importing");
+        _status.Text = LocalizationUtils.GetStringByKey("servers.importing");
         try
         {
             var existing = await _manager.FindExistingByEndpointAsync(url).ConfigureAwait(true);
             if (existing != null)
             {
-                _status.Text = Loc.Tf("servers.already_status", existing.BaseUrl);
+                _status.Text = LocalizationUtils.GetStringByKeyWithFormat("servers.already_status", existing.BaseUrl);
                 await DisplayAlert(
-                    Loc.T("servers.import_title"),
-                    Loc.Tf("servers.already_body", existing.BaseUrl),
-                    Loc.T("ok")).ConfigureAwait(true);
+                    LocalizationUtils.GetStringByKey("servers.import_title"),
+                    LocalizationUtils.GetStringByKeyWithFormat("servers.already_body", existing.BaseUrl),
+                    LocalizationUtils.GetStringByKey("ok")).ConfigureAwait(true);
                 return;
             }
 
             var entity = await _manager.AddServerAsync(url).ConfigureAwait(true);
             AppLog.ServerResponse("ImportServer", entity.BaseUrl, $"id={entity.Id}");
-            _status.Text = Loc.Tf("servers.imported", entity.BaseUrl);
+            _status.Text = LocalizationUtils.GetStringByKeyWithFormat("servers.imported", entity.BaseUrl);
             await ReloadAsync().ConfigureAwait(true);
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Import messenger server from QR");
             _status.Text = ex.Message;
-            await DisplayAlert(Loc.T("servers.import_title"), ex.Message, Loc.T("ok")).ConfigureAwait(true);
+            await DisplayAlert(LocalizationUtils.GetStringByKey("servers.import_title"), ex.Message, LocalizationUtils.GetStringByKey("ok")).ConfigureAwait(true);
         }
         finally
         {
@@ -380,9 +380,9 @@ public sealed class MessengerServersPage : ContentPage
                 switchControl.IsToggled = false;
             _suppressActiveToggle = false;
             await DisplayAlert(
-                Loc.T("servers.untrusted_title"),
-                Loc.T("servers.untrusted_body"),
-                Loc.T("ok")).ConfigureAwait(true);
+                LocalizationUtils.GetStringByKey("servers.untrusted_title"),
+                LocalizationUtils.GetStringByKey("servers.untrusted_body"),
+                LocalizationUtils.GetStringByKey("ok")).ConfigureAwait(true);
             return;
         }
 
@@ -403,7 +403,7 @@ public sealed class MessengerServersPage : ContentPage
             if (sw is Switch switchControl)
                 switchControl.IsToggled = !e.Value;
             _suppressActiveToggle = false;
-            await DisplayAlert(Loc.T("error"), ex.Message, Loc.T("ok")).ConfigureAwait(true);
+            await DisplayAlert(LocalizationUtils.GetStringByKey("error"), ex.Message, LocalizationUtils.GetStringByKey("ok")).ConfigureAwait(true);
         }
     }
 
@@ -417,21 +417,21 @@ public sealed class MessengerServersPage : ContentPage
 
         if (bindable is Button button)
             button.IsEnabled = false;
-        _status.Text = Loc.Tf("servers.asking", row.BaseUrl);
+        _status.Text = LocalizationUtils.GetStringByKeyWithFormat("servers.asking", row.BaseUrl);
         try
         {
             var result = await _manager.AskServersFromAsync(row.Id).ConfigureAwait(true);
             AppLog.ServerResponse("AskServers", row.BaseUrl,
                 $"received={result.ReceivedCount} updated={result.UpdatedCount} added={result.AddedCount}");
             await ReloadAsync().ConfigureAwait(true);
-            _status.Text = Loc.Tf("servers.ask_result", result.ReceivedCount, result.UpdatedCount, result.AddedCount,
+            _status.Text = LocalizationUtils.GetStringByKeyWithFormat("servers.ask_result", result.ReceivedCount, result.UpdatedCount, result.AddedCount,
                 row.BaseUrl);
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "AskServers from messenger server {Id}", row.Id);
             _status.Text = ex.Message;
-            await DisplayAlert(Loc.T("servers.ask_title"), ex.Message, Loc.T("ok")).ConfigureAwait(true);
+            await DisplayAlert(LocalizationUtils.GetStringByKey("servers.ask_title"), ex.Message, LocalizationUtils.GetStringByKey("ok")).ConfigureAwait(true);
         }
         finally
         {
@@ -447,7 +447,7 @@ public sealed class MessengerServersPage : ContentPage
 
         if (bindable is Button button)
             button.IsEnabled = false;
-        _status.Text = Loc.Tf("servers.checking", row.BaseUrl);
+        _status.Text = LocalizationUtils.GetStringByKeyWithFormat("servers.checking", row.BaseUrl);
         try
         {
             var result = await _manager.RecheckServerAsync(row.Id).ConfigureAwait(true);
@@ -456,27 +456,27 @@ public sealed class MessengerServersPage : ContentPage
             switch (result.Status)
             {
                 case MessengerServerRecheckStatus.AvailableAndTrusted:
-                    _status.Text = Loc.Tf("servers.available_status", result.Server.BaseUrl);
+                    _status.Text = LocalizationUtils.GetStringByKeyWithFormat("servers.available_status", result.Server.BaseUrl);
                     await DisplayAlert(
-                        Loc.T("servers.recheck_title"),
-                        Loc.T("servers.recheck_ok"),
-                        Loc.T("ok")).ConfigureAwait(true);
+                        LocalizationUtils.GetStringByKey("servers.recheck_title"),
+                        LocalizationUtils.GetStringByKey("servers.recheck_ok"),
+                        LocalizationUtils.GetStringByKey("ok")).ConfigureAwait(true);
                     break;
                 case MessengerServerRecheckStatus.Unreachable:
-                    _status.Text = Loc.Tf("servers.unreachable_status", result.Server.BaseUrl);
+                    _status.Text = LocalizationUtils.GetStringByKeyWithFormat("servers.unreachable_status", result.Server.BaseUrl);
                     await DisplayAlert(
-                        Loc.T("servers.recheck_title"),
+                        LocalizationUtils.GetStringByKey("servers.recheck_title"),
                         string.IsNullOrWhiteSpace(result.ErrorMessage)
-                            ? Loc.T("servers.recheck_unreachable")
-                            : Loc.Tf("servers.recheck_unreachable_detail", result.ErrorMessage),
-                        Loc.T("ok")).ConfigureAwait(true);
+                            ? LocalizationUtils.GetStringByKey("servers.recheck_unreachable")
+                            : LocalizationUtils.GetStringByKeyWithFormat("servers.recheck_unreachable_detail", result.ErrorMessage),
+                        LocalizationUtils.GetStringByKey("ok")).ConfigureAwait(true);
                     break;
                 case MessengerServerRecheckStatus.FingerprintMismatch:
-                    _status.Text = Loc.Tf("servers.fp_status", result.Server.BaseUrl);
+                    _status.Text = LocalizationUtils.GetStringByKeyWithFormat("servers.fp_status", result.Server.BaseUrl);
                     await DisplayAlert(
-                        Loc.T("servers.recheck_title"),
-                        Loc.Tf("servers.recheck_fp", result.ExpectedFingerprint, result.ActualFingerprint),
-                        Loc.T("ok")).ConfigureAwait(true);
+                        LocalizationUtils.GetStringByKey("servers.recheck_title"),
+                        LocalizationUtils.GetStringByKeyWithFormat("servers.recheck_fp", result.ExpectedFingerprint, result.ActualFingerprint),
+                        LocalizationUtils.GetStringByKey("ok")).ConfigureAwait(true);
                     break;
             }
         }
@@ -484,7 +484,7 @@ public sealed class MessengerServersPage : ContentPage
         {
             _logger.LogWarning(ex, "Recheck messenger server {Id}", row.Id);
             _status.Text = ex.Message;
-            await DisplayAlert(Loc.T("error"), ex.Message, Loc.T("ok")).ConfigureAwait(true);
+            await DisplayAlert(LocalizationUtils.GetStringByKey("error"), ex.Message, LocalizationUtils.GetStringByKey("ok")).ConfigureAwait(true);
         }
         finally
         {
@@ -499,10 +499,10 @@ public sealed class MessengerServersPage : ContentPage
             return;
 
         var ok = await DisplayAlert(
-            Loc.T("servers.delete_title"),
-            Loc.Tf("servers.delete_body", row.BaseUrl),
-            Loc.T("servers.delete"),
-            Loc.T("cancel")).ConfigureAwait(true);
+            LocalizationUtils.GetStringByKey("servers.delete_title"),
+            LocalizationUtils.GetStringByKeyWithFormat("servers.delete_body", row.BaseUrl),
+            LocalizationUtils.GetStringByKey("servers.delete"),
+            LocalizationUtils.GetStringByKey("cancel")).ConfigureAwait(true);
         if (!ok)
             return;
 
@@ -515,7 +515,7 @@ public sealed class MessengerServersPage : ContentPage
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Delete messenger server {Id}", row.Id);
-            await DisplayAlert(Loc.T("error"), ex.Message, Loc.T("ok")).ConfigureAwait(true);
+            await DisplayAlert(LocalizationUtils.GetStringByKey("error"), ex.Message, LocalizationUtils.GetStringByKey("ok")).ConfigureAwait(true);
         }
     }
 
@@ -626,11 +626,11 @@ public sealed class MessengerServersPage : ContentPage
                 : fp.Length <= 16
                     ? fp
                     : fp[..8] + "…" + fp[^8..];
-            var trust = trusted ? Loc.T("servers.meta_trusted") : Loc.T("servers.meta_untrusted");
-            var act = active ? Loc.T("servers.meta_active") : Loc.T("servers.meta_off");
-            var reg = registered ? Loc.T("servers.meta_registered") : Loc.T("servers.meta_not_registered");
+            var trust = trusted ? LocalizationUtils.GetStringByKey("servers.meta_trusted") : LocalizationUtils.GetStringByKey("servers.meta_untrusted");
+            var act = active ? LocalizationUtils.GetStringByKey("servers.meta_active") : LocalizationUtils.GetStringByKey("servers.meta_off");
+            var reg = registered ? LocalizationUtils.GetStringByKey("servers.meta_registered") : LocalizationUtils.GetStringByKey("servers.meta_not_registered");
             var ratingText = rating.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
-            return Loc.Tf("servers.meta", ratingText, trust, act, reg, shortFp);
+            return LocalizationUtils.GetStringByKeyWithFormat("servers.meta", ratingText, trust, act, reg, shortFp);
         }
 
         public event PropertyChangedEventHandler? PropertyChanged;
@@ -648,3 +648,4 @@ file static class MessengerServersPageViewExtensions
         return view;
     }
 }
+

@@ -8,8 +8,14 @@ public sealed class MessageRowVm
     public required string CaptionLine { get; init; }
     public required string TextBody { get; init; }
 
-    /// <summary>Текст вложения (без FormattedString — на WinUI он роняет layout OOM).</summary>
-    public string FileBodyText { get; init; } = "";
+    /// <summary>MauiImage resource name for attachment icon (e.g. attach_video.png).</summary>
+    public string AttachmentIconSource { get; init; } = "";
+
+    /// <summary>First line of attachment text: file name and optional duration.</summary>
+    public string FileTitleText { get; init; } = "";
+
+    /// <summary>Second line: size and action hint.</summary>
+    public string FileMetaText { get; init; } = "";
 
     public bool ShowTextBody { get; init; }
 
@@ -21,7 +27,7 @@ public sealed class MessageRowVm
 
     public bool IsTransferOffer { get; init; }
 
-    /// <summary>Голосовое (.ogg / opus): ⬇️ скачать или ▶️ играть.</summary>
+    /// <summary>Голосовое (.ogg / opus): download or play icon via <see cref="AttachmentIconSource"/>.</summary>
     public bool IsVoice { get; init; }
 
     /// <summary>True — локально доступно для воспроизведения; false — нужно скачать.</summary>

@@ -17,6 +17,7 @@ using ShortP2P.Client.Data;
 using ShortP2P.Client.Routing;
 using ShortP2P.Client.Services;
 using ShortP2P.Client.Services.MessengerServers;
+using ShortP2P.Client.Transport;
 using ShortP2P.Crypto;
 using ShortP2P.Discovery;
 using ShortP2P.Discovery.Ble;
@@ -24,6 +25,7 @@ using ShortP2P.Discovery.Pings;
 using ShortP2P.Discovery.Profile;
 using ShortP2P.Discovery.RouteTables;
 using ShortP2P.Transport;
+using TorgLink.LoRa;
 using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 
 SQLitePCL.Batteries_V2.Init();
@@ -59,9 +61,15 @@ builder.Services.AddAuthorization();
 builder.Services.AddProblemDetails();
 builder.Services.AddSignalR();
 // Frontend is served same-origin from wwwroot — no CORS needed.
-builder.Services.Configure<FormOptions>(o => o.MultipartBodyLengthLimit = 20 * 1024 * 1024);
+builder.Services.Configure<FormOptions>(o => o.MultipartBodyLengthLimit = MediaFileLimits.MaxUploadBytes);
+builder.WebHost.ConfigureKestrel(o => o.Limits.MaxRequestBodySize = MediaFileLimits.MaxUploadBytes);
 
-builder.Services.AddSingleton(_ => ChatMediaOptions.LoadOrDefault(WebAppPaths.ChatMediaPath));
+builder.Services.AddSingleton(_ =>
+{
+    var opts = ChatMediaOptions.LoadOrDefault(WebAppPaths.ChatMediaPath);
+    MediaFileLimits.ApplyStandardCeilings(opts);
+    return opts;
+});
 builder.Services.AddSingleton(_ => new AppDatabase(WebAppPaths.DatabasePath));
 builder.Services.AddSingleton<IUserAuthRepository, SqliteUserAuthRepository>();
 builder.Services.AddRouteDbContextForAspNet(WebAppPaths.RoutesDbPath);
@@ -78,11 +86,20 @@ builder.Services.AddSingleton<IUdpTransportFactory, UdpTransportFactory>();
 builder.Services.AddSingleton<ChatSessionCache>();
 builder.Services.AddSingleton<P2pCryptoSessionCache>();
 builder.Services.AddSingleton<IMessengerServerRepository, SqliteMessengerServerRepository>();
+builder.Services.AddSingleton<IBotVersionRepository, SqliteBotVersionRepository>();
 builder.Services.AddSingleton<DeviceIdProvider>();
 builder.Services.AddSingleton<MessengerServerManager>();
 builder.Services.AddSingleton<MessengerServerSyncService>();
 builder.Services.AddSingleton<IBluetoothRadioCatalog, EmptyBluetoothRadioCatalog>();
 builder.Services.AddSingleton<IBluetoothTransportProvider, NoOpBluetoothTransportProvider>();
+builder.Services.AddSingleton<LoRaTransportSettingsStore>();
+builder.Services.AddSingleton(sp => new MeshtasticTransportHost(
+    sp.GetRequiredService<AuthService>(),
+    sp.GetRequiredService<ChatRepository>(),
+    sp.GetRequiredService<LoRaTransportSettingsStore>(),
+    sp.GetRequiredService<ILoggerFactory>()));
+builder.Services.AddSingleton<IAdditionalTransportProvider>(sp =>
+    sp.GetRequiredService<MeshtasticTransportHost>());
 builder.Services.AddSingleton(sp => new UserP2pRuntime(
     sp.GetRequiredService<P2pRoutingSettingsStore>(),
     sp.GetRequiredService<AuthService>(),
@@ -101,7 +118,8 @@ builder.Services.AddSingleton(sp => new UserP2pRuntime(
     sp.GetRequiredService<ILoggerFactory>(),
     sp.GetRequiredService<MessengerServerSyncService>(),
     sp.GetRequiredService<IPeerProfileStore>(),
-    sp.GetRequiredService<ILocalPeerProfileSource>()));
+    sp.GetRequiredService<ILocalPeerProfileSource>(),
+    sp.GetRequiredService<IAdditionalTransportProvider>()));
 builder.Services.AddHostedService<WebRuntimeHostedService>();
 builder.Services.AddHostedService<RealtimeForwarder>();
 
@@ -162,6 +180,7 @@ sealed class WebRuntimeHostedService(
     IServiceProvider services,
     AuthService auth,
     UserP2pRuntime p2p,
+    MeshtasticTransportHost lora,
     ILogger<WebRuntimeHostedService> logger) : IHostedService
 {
     public async Task StartAsync(CancellationToken cancellationToken)
@@ -180,7 +199,8 @@ sealed class WebRuntimeHostedService(
             await auth.TryRestoreSessionAsync().ConfigureAwait(false);
             if (auth.CurrentUser != null)
             {
-                await p2p.EnsureStartedAsync(auth.CurrentUser, cancellationToken).ConfigureAwait(false);
+                await LoRaBootstrap.EnsureRunningAsync(lora, p2p, auth.CurrentUser, logger, cancellationToken)
+                    .ConfigureAwait(false);
                 await MessengerServersBootstrap.EnsureRunningAsync(p2p, logger, cancellationToken)
                     .ConfigureAwait(false);
             }
@@ -200,6 +220,15 @@ sealed class WebRuntimeHostedService(
         catch (Exception ex)
         {
             logger.LogWarning(ex, "P2P runtime stop failed");
+        }
+
+        try
+        {
+            await lora.StopAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "LoRa transport stop failed");
         }
     }
 }

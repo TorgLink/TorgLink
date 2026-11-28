@@ -1,7 +1,7 @@
 using ShortP2P.Auth.Data;
 using ShortP2P.Client.Services;
 using ShortP2P.Client.Services.MessengerServers;
-using TorgLink.Maui.Localization;
+using TorgLink.Localization;
 
 namespace TorgLink.Maui;
 
@@ -31,7 +31,7 @@ public partial class AppHeaderView : ContentView
     {
         ApplySettingsAccessibility();
         NickLabel.Text = user?.Nickname ?? "";
-        PortLabel.Text = user == null ? "" : Loc.Tf("header.port", user.DataUdpPort);
+        PortLabel.Text = user == null ? "" : LocalizationUtils.GetStringByKeyWithFormat("header.port", user.DataUdpPort);
         if (user == null)
         {
             SelfAvatarHost.IsVisible = false;
@@ -45,7 +45,7 @@ public partial class AppHeaderView : ContentView
 
         var meshOn = p2p.LocalScan.IsUdpListening || p2p.Settings.EnableUdpTransport;
         MeshDot.Fill = meshOn ? TorgLinkTheme.Online : TorgLinkTheme.Offline;
-        MeshLabel.Text = meshOn ? Loc.T("header.mesh_on") : Loc.T("header.mesh_off");
+        MeshLabel.Text = meshOn ? LocalizationUtils.GetStringByKey("header.mesh_on") : LocalizationUtils.GetStringByKey("header.mesh_off");
         MeshLabel.TextColor = meshOn ? TorgLinkTheme.Online : TorgLinkTheme.Muted;
         var btOn = p2p.Settings.EnableBluetoothTransport && p2p.LocalScan.IsBluetoothListening;
         BtIcon.Opacity = btOn ? 1 : 0.28;
@@ -54,11 +54,11 @@ public partial class AppHeaderView : ContentView
 
     private void ApplySettingsAccessibility()
     {
-        var text = Loc.T("tab.settings");
+        var text = LocalizationUtils.GetStringByKey("tab.settings");
         ToolTipProperties.SetText(SettingsIcon, text);
         SemanticProperties.SetDescription(SettingsIcon, text);
         AutomationProperties.SetName(SettingsIcon, text);
-        var profile = Loc.T("profile.title");
+        var profile = LocalizationUtils.GetStringByKey("profile.title");
         ToolTipProperties.SetText(SelfAvatarHost, profile);
         SemanticProperties.SetDescription(SelfAvatarHost, profile);
     }
@@ -114,24 +114,25 @@ public partial class AppHeaderView : ContentView
         {
             case MessengerServerLinkStatus.Connected:
                 ServerDot.Fill = TorgLinkTheme.Online;
-                ServerLabel.Text = Loc.T("header.server_on");
+                ServerLabel.Text = LocalizationUtils.GetStringByKey("header.server_on");
                 ServerLabel.TextColor = TorgLinkTheme.Online;
                 break;
             case MessengerServerLinkStatus.Waiting:
                 ServerDot.Fill = ServerWaiting;
-                ServerLabel.Text = Loc.T("header.server_wait");
+                ServerLabel.Text = LocalizationUtils.GetStringByKey("header.server_wait");
                 ServerLabel.TextColor = ServerWaiting;
                 break;
             case MessengerServerLinkStatus.Disconnected:
                 ServerDot.Fill = TorgLinkTheme.Danger;
-                ServerLabel.Text = Loc.T("header.server_fail");
+                ServerLabel.Text = LocalizationUtils.GetStringByKey("header.server_fail");
                 ServerLabel.TextColor = TorgLinkTheme.Danger;
                 break;
             default:
                 ServerDot.Fill = TorgLinkTheme.Offline;
-                ServerLabel.Text = Loc.T("header.server_off");
+                ServerLabel.Text = LocalizationUtils.GetStringByKey("header.server_off");
                 ServerLabel.TextColor = TorgLinkTheme.Muted;
                 break;
         }
     }
 }
+
